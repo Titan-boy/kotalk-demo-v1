@@ -249,3 +249,35 @@ body.focus { padding-bottom: env(safe-area-inset-bottom); }
 .btn.cta { background: var(--primary); color: var(--primary-ink); border: 0; border-radius: 16px; min-height: 58px; font-size: 18px; font-weight: 800; box-shadow: 0 4px 0 color-mix(in srgb, var(--primary) 60%, #000); }
 .step-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
 .step-head .tag { font-size: 12px; font-weight: 800; color: var(--primary); }
+
+/* ===== スタート画面 ===== */
+.start-date { color: var(--muted); font-size: 13px; margin: 4px 0 0; }
+.start-title { font-size: 24px; margin: 2px 0 14px; }
+.start-card .ko-sentence { font-size: 20px; }
+.start-meta { display: flex; justify-content: space-between; gap: 8px; font-size: 13px; color: var(--muted); border-top: 1px solid var(--line); padding-top: 10px; margin-top: 4px; }
+.choice {
+  display: flex; align-items: center; gap: 14px; width: 100%; margin-bottom: 12px; padding: 16px 18px;
+  border-radius: var(--radius); border: 2px solid var(--line); background: var(--surface); color: var(--text);
+  font: inherit; text-align: left; cursor: pointer;
+}
+.choice.primary { background: var(--primary); border-color: var(--primary); color: var(--primary-ink); box-shadow: 0 4px 0 color-mix(in srgb, var(--primary) 60%, #000); }
+.choice-ico { flex: none; width: 48px; height: 48px; border-radius: 50%; background: var(--surface-2); display: grid; place-items: center; font-size: 24px; }
+.choice.primary .choice-ico { background: rgba(255, 255, 255, .22); }
+.choice-body { flex: 1; display: flex; flex-direction: column; gap: 2px; }
+.choice-body b { font-size: 18px; }
+.choice-body small { font-size: 13px; opacity: .8; }
+.choice-arrow { font-size: 28px; opacity: .7; }
+
+/* ===== 単語練習・クイズ共通 ===== */
+.word-tag { font-size: 12px; font-weight: 800; color: var(--ok); border: 1px solid currentColor; border-radius: 999px; padding: 2px 10px; }
+.word-tag.new { color: var(--primary); }
+.word-card { width: 100%; font: inherit; color: var(--text); cursor: pointer; }
+.word-ja { font-size: 24px; font-weight: 800; margin: 0; }
+.word-hint { color: var(--muted); font-size: 13px; margin: 0; }
+.word-sentence { color: var(--muted); font-size: 14px; margin: 0; padding: 0 8px; }
+#stepWords .row { margin-top: 16px; }
+#stepWords .btn.cta { min-height: 52px; font-size: 16px; }
+.steps { grid-template-columns: repeat(4, 1fr); gap: 4px; }
+.step-ico { width: 54px; height: 54px; border-width: 4px; font-size: 22px; }
+.step span { font-size: 11px; }
+.score-sub { font-size: 13px; }

@@ -19,11 +19,53 @@
   </div>
 
   <main>
-    <!-- ===== 1. 今日のレッスン（単語テスト → 採点表 → 文章練習） ===== -->
+    <!-- ===== 1. 今日のレッスン ===== -->
+    <!-- 流れ：スタート画面 →（じっくり単語練習 →）会話練習（例文・録音・フィードバック）→ 関連単語クイズ → 採点表 -->
     <section id="view-practice" class="view active" aria-labelledby="h-practice">
       <h1 id="h-practice" class="sr-only">今日のレッスン</h1>
 
-      <!-- STEP 1: 単語テスト -->
+      <!-- スタート画面 -->
+      <div class="lesson-step" id="stepStart">
+        <p class="start-date" id="startDate"></p>
+        <h2 class="start-title">今日のレッスン <span class="muted" id="startIndex"></span></h2>
+        <div class="card start-card">
+          <p class="ko-sentence" id="startKo" lang="ko"></p>
+          <p class="ja-translation" id="startJa"></p>
+          <div class="start-meta"><span id="startStreak"></span><span id="startDone"></span></div>
+        </div>
+        <button class="choice" id="btnStartWords" type="button">
+          <span class="choice-ico">🐢</span>
+          <span class="choice-body"><b>じっくり単語練習から</b><small>単語10語を確認 → 会話練習 → 単語クイズ</small></span>
+          <span class="choice-arrow">›</span>
+        </button>
+        <button class="choice primary" id="btnStartTalk" type="button">
+          <span class="choice-ico">⚡</span>
+          <span class="choice-body"><b>すぐに会話練習</b><small>例文 → 録音 → 単語クイズ</small></span>
+          <span class="choice-arrow">›</span>
+        </button>
+        <button class="btn link" id="btnStartNext" type="button">別のレッスンにする →</button>
+      </div>
+
+      <!-- じっくり単語練習（カード形式） -->
+      <div class="lesson-step" id="stepWords" hidden>
+        <div class="quiz-top">
+          <button class="icon-btn" id="btnWordsClose" type="button" aria-label="単語練習を終了">✕</button>
+          <div class="quiz-progress" role="progressbar" aria-label="進み具合"><i id="wordsBar"></i></div>
+        </div>
+        <button class="quiz-card word-card" id="wordCard" type="button" aria-label="タップで意味を表示">
+          <span class="word-tag" id="wordTag"></span>
+          <div class="quiz-pill"><small id="wordNo">1 / 10</small><b id="wordKo" lang="ko"></b></div>
+          <p class="word-ja" id="wordJa" hidden></p>
+          <p class="word-hint" id="wordHint">タップして意味を表示</p>
+          <p class="word-sentence" id="wordSentence" lang="ko" hidden></p>
+        </button>
+        <div class="row">
+          <button class="btn ghost" id="btnWordPrev" type="button">← 前へ</button>
+          <button class="btn cta" id="btnWordNext" type="button">次へ →</button>
+        </div>
+      </div>
+
+      <!-- 関連単語クイズ -->
       <div class="lesson-step" id="stepQuiz">
         <div class="quiz-top">
           <button class="icon-btn" id="btnQuizClose" type="button" aria-label="テストを終了">✕</button>
@@ -31,19 +73,21 @@
         </div>
         <div class="quiz-card">
           <div class="quiz-pill"><small id="quizNo">1 / 10</small><b id="quizWord" lang="ko"></b></div>
+          <span class="word-tag" id="quizTag"></span>
           <p class="quiz-q">意味を選んでください</p>
         </div>
         <div class="quiz-skip-row"><button class="skip-btn" id="btnSkip" type="button">SKIP</button></div>
         <div class="quiz-options" id="quizOptions"></div>
       </div>
 
-      <!-- STEP 2: 採点表 -->
+      <!-- 採点表 -->
       <div class="lesson-step" id="stepScore" hidden>
         <div class="card">
           <div class="steps">
-            <div class="step done"><div class="step-ico">🔤</div><span>単語</span></div>
+            <div class="step" id="stepIcoWords"><div class="step-ico">🐢</div><span>単語練習</span></div>
+            <div class="step done"><div class="step-ico">🎙️</div><span>会話練習</span></div>
+            <div class="step done"><div class="step-ico">🔤</div><span>単語クイズ</span></div>
             <div class="step now"><div class="step-ico">📊</div><span>採点</span></div>
-            <div class="step"><div class="step-ico">🎙️</div><span>文章練習</span></div>
           </div>
           <div class="score-row">今回の正解数<b id="quizCorrect">0</b><small> / <span id="quizTotal">10</span></small></div>
         </div>
@@ -60,12 +104,13 @@
           <div class="card-label">復習する単語</div>
           <ul class="review-list" id="reviewList"></ul>
         </div>
-        <button class="btn cta block" id="btnToSentence" type="button">文章練習へ</button>
+        <button class="btn cta block" id="btnScoreHome" type="button">レッスン完了</button>
+        <button class="btn link" id="btnScoreNext" type="button">次のレッスンへ →</button>
       </div>
 
-      <!-- STEP 3: 文章練習 -->
+      <!-- 会話練習 -->
       <div class="lesson-step" id="stepSentence" hidden>
-      <div class="step-head"><span class="tag">STEP 3 / 3　文章練習</span><button class="btn link" id="btnRetryQuiz" type="button">単語テストをもう一度</button></div>
+      <div class="step-head"><span class="tag">会話練習</span><button class="btn link" id="btnSentenceHome" type="button">← スタートに戻る</button></div>
       <div class="card sentence-card">
         <div class="card-label">今日の例文 <span class="muted" id="sentenceIndex"></span></div>
         <p class="ko-sentence" id="koSentence" lang="ko"></p>
@@ -76,7 +121,7 @@
         </details>
         <div class="row">
           <button class="btn ghost" id="btnModel" type="button">🔊 お手本を聞く</button>
-          <button class="btn ghost" id="btnNext" type="button">次のレッスン →</button>
+          <button class="btn ghost" id="btnWordsFromTalk" type="button">📖 単語を確認</button>
         </div>
         <div class="help-box" id="ttsHelp" hidden></div>
       </div>
@@ -102,7 +147,8 @@
         <ul class="feedback-list" id="feedbackList"></ul>
         <p class="hint">各コメントをタップすると、もう一方の言語で表示します。</p>
         <div class="reward" id="rewardBox" hidden></div>
-        <button class="btn primary block" id="btnRetry" type="button">もう一度録音する</button>
+        <button class="btn cta block" id="btnToQuiz" type="button">関連単語クイズへ</button>
+        <button class="btn ghost block" id="btnRetry" type="button">もう一度録音する</button>
       </div>
       </div>
     </section>
@@ -127,7 +173,7 @@
       <div class="card">
         <div class="card-label">ルール</div>
         <ul class="rules">
-          <li>単語テストの正解1問につき +2pt（1日1回）</li>
+          <li>関連単語クイズの正解1問につき +2pt（1日1回）</li>
           <li>1日1回、文章を録音して評価を受けると出席（+10pt）</li>
           <li>7日連続ごとにボーナス +30pt</li>
           <li>休息券は週1枚（月曜リセット）。1日だけ休んでも、翌日練習すれば連続記録が自動で守られます</li>

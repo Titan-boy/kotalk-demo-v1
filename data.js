@@ -1,6 +1,6 @@
 // 例文データ（日本人中級学習者向け）
 // audio: お手本音声（ElevenLabs「Soo - Warm Korean Teacher」で生成）
-// words: 単語テスト用（例文に関連する10語。選択肢は同じリストの他の語から作る）
+// words: 単語練習・単語クイズ用の10語（inSentence: 例文に出てくる4語 ／ それ以外: 関連する新しい6語）
 // points: 発音のポイント（ja: 説明, ko: 韓国語での説明）
 window.SENTENCES = [
   {
@@ -8,10 +8,10 @@ window.SENTENCES = [
     audio: "audio/1.mp3",
     ja: "週末に時間があったら、一緒に映画を見に行きませんか？",
     words: [
-      { ko: "주말", ja: "週末" },
-      { ko: "시간", ja: "時間" },
-      { ko: "같이", ja: "一緒に" },
-      { ko: "영화", ja: "映画" },
+      { ko: "주말", ja: "週末", inSentence: true },
+      { ko: "시간", ja: "時間", inSentence: true },
+      { ko: "같이", ja: "一緒に", inSentence: true },
+      { ko: "영화", ja: "映画", inSentence: true },
       { ko: "극장", ja: "映画館" },
       { ko: "표", ja: "チケット" },
       { ko: "약속", ja: "約束" },
@@ -29,10 +29,10 @@ window.SENTENCES = [
     audio: "audio/2.mp3",
     ja: "昨日とても疲れていたので、早く寝ました。",
     words: [
-      { ko: "어제", ja: "昨日" },
-      { ko: "피곤하다", ja: "疲れている" },
-      { ko: "일찍", ja: "早く" },
-      { ko: "자다", ja: "寝る" },
+      { ko: "어제", ja: "昨日", inSentence: true },
+      { ko: "피곤하다", ja: "疲れている", inSentence: true },
+      { ko: "일찍", ja: "早く", inSentence: true },
+      { ko: "자다", ja: "寝る", inSentence: true },
       { ko: "늦게", ja: "遅く" },
       { ko: "졸리다", ja: "眠い" },
       { ko: "푹 쉬다", ja: "ゆっくり休む" },
@@ -50,15 +50,15 @@ window.SENTENCES = [
     audio: "audio/3.mp3",
     ja: "韓国料理の中で何がいちばん好きですか？",
     words: [
-      { ko: "음식", ja: "料理・食べ物" },
-      { ko: "제일", ja: "いちばん" },
-      { ko: "좋아하다", ja: "好きだ" },
+      { ko: "음식", ja: "料理・食べ物", inSentence: true },
+      { ko: "중에서", ja: "〜の中で", inSentence: true },
+      { ko: "제일", ja: "いちばん", inSentence: true },
+      { ko: "좋아하다", ja: "好きだ", inSentence: true },
       { ko: "맵다", ja: "辛い" },
       { ko: "달다", ja: "甘い" },
       { ko: "짜다", ja: "しょっぱい" },
       { ko: "맛", ja: "味" },
       { ko: "반찬", ja: "おかず" },
-      { ko: "싫어하다", ja: "嫌いだ" },
       { ko: "입에 맞다", ja: "口に合う" }
     ],
     points: [
@@ -71,11 +71,11 @@ window.SENTENCES = [
     audio: "audio/4.mp3",
     ja: "来週までにご連絡します。",
     words: [
-      { ko: "다음 주", ja: "来週" },
+      { ko: "다음 주", ja: "来週", inSentence: true },
+      { ko: "까지", ja: "〜まで", inSentence: true },
+      { ko: "연락", ja: "連絡", inSentence: true },
+      { ko: "드리다", ja: "差し上げる", inSentence: true },
       { ko: "지난주", ja: "先週" },
-      { ko: "연락", ja: "連絡" },
-      { ko: "드리다", ja: "差し上げる" },
-      { ko: "까지", ja: "〜まで" },
       { ko: "답장", ja: "返信" },
       { ko: "확인하다", ja: "確認する" },
       { ko: "일정", ja: "日程" },
@@ -92,15 +92,15 @@ window.SENTENCES = [
     audio: "audio/5.mp3",
     ja: "この近くにおいしい食堂はありますか？",
     words: [
-      { ko: "근처", ja: "近く" },
-      { ko: "맛있다", ja: "おいしい" },
-      { ko: "식당", ja: "食堂" },
+      { ko: "근처", ja: "近く", inSentence: true },
+      { ko: "맛있다", ja: "おいしい", inSentence: true },
+      { ko: "식당", ja: "食堂", inSentence: true },
+      { ko: "있다", ja: "ある・いる", inSentence: true },
       { ko: "맛집", ja: "人気のおいしい店" },
       { ko: "메뉴", ja: "メニュー" },
       { ko: "주문하다", ja: "注文する" },
       { ko: "예약하다", ja: "予約する" },
       { ko: "자리", ja: "席" },
-      { ko: "계산하다", ja: "会計する" },
       { ko: "추천하다", ja: "おすすめする" }
     ],
     points: [
