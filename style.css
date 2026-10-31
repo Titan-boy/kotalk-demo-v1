@@ -179,3 +179,18 @@ li[data-lang="ko"] .lang-chip { background: var(--ko); }
   background: var(--text); color: var(--bg); padding: 10px 16px; border-radius: 12px;
   font-size: 14px; max-width: calc(100% - 32px); box-shadow: var(--shadow);
 }
+
+/* ===== 端末対応 ===== */
+.inapp-banner {
+  display: flex; gap: 10px; align-items: center; padding: 10px 16px;
+  background: color-mix(in srgb, var(--accent) 14%, var(--surface)); border-bottom: 1px solid var(--line); font-size: 13px;
+}
+.inapp-banner p { margin: 0; flex: 1; }
+.inapp-banner .btn { flex: none; font-size: 13px; min-height: 36px; padding: 6px 10px; }
+.help-box { margin-top: 12px; padding: 10px 12px; border-radius: 12px; font-size: 13px; background: color-mix(in srgb, var(--accent) 10%, transparent); }
+.help-box p { margin: 0 0 4px; font-weight: 700; }
+.help-box ul { margin: 0; padding-left: 18px; }
+.diag { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; margin: 0; font-size: 14px; }
+.diag dt { color: var(--muted); }
+.diag dd { margin: 0; font-weight: 600; }
+.hint code { word-break: break-all; font-size: 11px; }

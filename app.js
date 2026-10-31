@@ -165,7 +165,9 @@
     exchangeCost: $("exchangeCost"), exchangeBar: $("exchangeBar"), exchangeHint: $("exchangeHint"),
     btnExchange: $("btnExchange"), requestList: $("requestList"),
     btnSkipDay: $("btnSkipDay"), btnAddPts: $("btnAddPts"), btnReset: $("btnReset"), demoToday: $("demoToday"),
-    toast: $("toast")
+    toast: $("toast"),
+    inAppBanner: $("inAppBanner"), btnCopyUrl: $("btnCopyUrl"), ttsHelp: $("ttsHelp"),
+    diag: $("diag"), diagUa: $("diagUa")
   };
 
   let toastTimer;
@@ -210,25 +212,139 @@
     renderSentence();
   });
 
-  // お手本音声：現在はブラウザ内蔵の音声合成
-  // TODO(API): 本番ではネイティブ録音または ElevenLabs 等で生成した音声ファイルに差し替え
-  el.btnModel.addEventListener("click", () => {
-    if (!("speechSynthesis" in window)) { toast("この端末では音声再生に対応していません"); return; }
-    speechSynthesis.cancel();
-    const u = new SpeechSynthesisUtterance(current().ko);
-    u.lang = "ko-KR";
-    u.rate = 0.9;
-    const ko = speechSynthesis.getVoices().find(v => v.lang && v.lang.startsWith("ko"));
-    if (ko) u.voice = ko;
-    speechSynthesis.speak(u);
+  // ===== 端末・ブラウザの対応状況 =====
+  const UA = navigator.userAgent;
+  // アプリ内ブラウザ（LINE / Instagram / Threads / Facebook / X / カカオトーク / NAVER など）
+  const IN_APP = /\bLine\/|FBAN|FBAV|Instagram|Barcelona|Twitter|KAKAOTALK|NAVER\(|DaumApps|GSA\//i.test(UA);
+  const IS_IOS = /iPhone|iPad|iPod/.test(UA) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+  const HAS_GUM = !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
+  const HAS_MR = typeof window.MediaRecorder === "function";
+  const HAS_WEBAUDIO = !!(window.AudioContext || window.webkitAudioContext);
+  const HAS_TTS = "speechSynthesis" in window && typeof window.SpeechSynthesisUtterance === "function";
+  const canRecord = HAS_GUM && (HAS_MR || HAS_WEBAUDIO);
+  const koVoices = () => (HAS_TTS ? speechSynthesis.getVoices().filter(v => /^ko/i.test(v.lang)) : []);
+  // 音声一覧は非同期で読み込まれる端末があるため、事前に一度読み込んでおく
+  if (HAS_TTS) {
+    speechSynthesis.getVoices();
+    speechSynthesis.addEventListener && speechSynthesis.addEventListener("voiceschanged", () => renderDiagnostics());
+  }
+
+  if (IN_APP) {
+    el.inAppBanner.hidden = false;
+  }
+  el.btnCopyUrl.addEventListener("click", async () => {
+    try {
+      await navigator.clipboard.writeText(location.href);
+      toast("URLをコピーしました。Safari / Chrome に貼り付けて開いてください");
+    } catch (e) {
+      prompt("このURLをコピーして Safari / Chrome で開いてください", location.href);
+    }
   });
 
+  // お手本音声
+  // 1) data.js に audio（音声ファイルのパス）があればそれを再生（最も確実）
+  // 2) なければブラウザ内蔵の音声合成（端末に韓国語音声が必要）
+  // TODO(API): 本番ではネイティブ録音または ElevenLabs 等で生成した音声ファイルを audio/ に置き、data.js の audio に指定
+  const modelAudio = new Audio();
+  el.btnModel.addEventListener("click", () => {
+    const s = current();
+    if (s.audio) {
+      modelAudio.src = s.audio;
+      modelAudio.play().catch(() => toast("音声を再生できませんでした"));
+      return;
+    }
+    if (!HAS_TTS) { showTtsHelp("このブラウザは音声読み上げに対応していません。"); return; }
+    // iOS ではタップ操作の中で同期的に speak() を呼ぶ必要があるため、待たずにすぐ再生する
+    speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(s.ko);
+    u.lang = "ko-KR";
+    u.rate = 0.9;
+    const v = koVoices()[0];
+    if (v) u.voice = v;
+    let started = false;
+    u.onstart = () => { started = true; };
+    u.onerror = e => { if (e.error !== "interrupted" && e.error !== "canceled") showTtsHelp("音声の再生に失敗しました。"); };
+    speechSynthesis.speak(u);
+    setTimeout(() => {
+      if (!started && !speechSynthesis.speaking) {
+        showTtsHelp(koVoices().length ? "音声が再生されませんでした。" : "この端末に韓国語の読み上げ音声が見つかりません。");
+      }
+    }, 2500);
+  });
+
+  function showTtsHelp(reason) {
+    const tips = [];
+    if (IN_APP) tips.push("アプリ内ブラウザでは再生できないことがあります。Safari / Chrome で開いてください。");
+    if (IS_IOS) tips.push("iPhone はマナーモード（消音スイッチ）だと読み上げ音が出ません。解除して音量を上げてください。");
+    if (IS_IOS) tips.push("設定 → アクセシビリティ → 読み上げコンテンツ → 声 → 韓国語 で音声を追加できます。");
+    else tips.push("端末の設定で「テキスト読み上げ」に韓国語を追加してください。");
+    el.ttsHelp.innerHTML = "";
+    const p = document.createElement("p");
+    p.textContent = reason;
+    const ul = document.createElement("ul");
+    tips.forEach(t => { const li = document.createElement("li"); li.textContent = t; ul.appendChild(li); });
+    el.ttsHelp.append(p, ul);
+    el.ttsHelp.hidden = false;
+  }
+
   // ===== 録音 =====
-  let recorder = null, chunks = [], recBlob = null, recStart = 0, recDuration = null, recTimer = null, stream = null;
-  const canRecord = !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia && window.MediaRecorder);
+  // MediaRecorder が使えれば利用し、無い端末（古い iOS など）では Web Audio で WAV を作る
+  let rec = null, recBlob = null, recStart = 0, recDuration = null, recTimer = null, stream = null;
+
+  function noRecordReason() {
+    if (!window.isSecureContext) return "録音には https で開く必要があります";
+    if (IN_APP) return "アプリ内ブラウザでは録音できません。Safari / Chrome で開いてください";
+    return "このブラウザでは録音できません";
+  }
   if (!canRecord) {
     el.btnNoMic.hidden = false;
-    el.recStatus.textContent = "このブラウザでは録音できません";
+    el.recStatus.textContent = noRecordReason();
+  }
+
+  function startMediaRecorder(s) {
+    const chunks = [];
+    const mr = new MediaRecorder(s);
+    mr.ondataavailable = e => { if (e.data.size) chunks.push(e.data); };
+    mr.start();
+    return {
+      stop: () => new Promise(resolve => {
+        mr.onstop = () => resolve(new Blob(chunks, { type: mr.mimeType || "audio/webm" }));
+        mr.stop();
+      })
+    };
+  }
+
+  function startWavRecorder(s) {
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    const ctx = new Ctx();
+    const src = ctx.createMediaStreamSource(s);
+    const proc = ctx.createScriptProcessor(4096, 1, 1);
+    const bufs = [];
+    proc.onaudioprocess = e => bufs.push(new Float32Array(e.inputBuffer.getChannelData(0)));
+    src.connect(proc);
+    proc.connect(ctx.destination);
+    return {
+      stop: () => {
+        proc.disconnect();
+        src.disconnect();
+        const rate = ctx.sampleRate;
+        ctx.close();
+        return Promise.resolve(encodeWav(bufs, rate));
+      }
+    };
+  }
+
+  function encodeWav(bufs, rate) {
+    const len = bufs.reduce((n, b) => n + b.length, 0);
+    const view = new DataView(new ArrayBuffer(44 + len * 2));
+    const str = (o, t) => { for (let i = 0; i < t.length; i++) view.setUint8(o + i, t.charCodeAt(i)); };
+    str(0, "RIFF"); view.setUint32(4, 36 + len * 2, true); str(8, "WAVE");
+    str(12, "fmt "); view.setUint32(16, 16, true); view.setUint16(20, 1, true); view.setUint16(22, 1, true);
+    view.setUint32(24, rate, true); view.setUint32(28, rate * 2, true); view.setUint16(32, 2, true); view.setUint16(34, 16, true);
+    str(36, "data"); view.setUint32(40, len * 2, true);
+    let o = 44;
+    bufs.forEach(b => b.forEach(x => { const v = Math.max(-1, Math.min(1, x)); view.setInt16(o, v < 0 ? v * 0x8000 : v * 0x7fff, true); o += 2; }));
+    return new Blob([view], { type: "audio/wav" });
   }
 
   function resetRecording() {
@@ -239,35 +355,44 @@
     el.resultCard.hidden = true;
     el.recordCard.hidden = false;
     el.btnRec.classList.remove("recording");
-    el.recStatus.textContent = canRecord ? "マイクをタップして録音" : "このブラウザでは録音できません";
+    el.recStatus.textContent = canRecord ? "マイクをタップして録音" : noRecordReason();
+  }
+
+  async function stopRecording() {
+    if (!rec) return;
+    const r = rec;
+    rec = null;
+    clearInterval(recTimer);
+    recDuration = (Date.now() - recStart) / 1000;
+    recBlob = await r.stop();
+    stream.getTracks().forEach(t => t.stop());
+    el.playback.src = URL.createObjectURL(recBlob);
+    el.playback.hidden = false;
+    el.btnEvaluate.hidden = false;
+    el.btnRec.classList.remove("recording");
+    el.btnRec.setAttribute("aria-label", "録音し直す");
+    el.recStatus.textContent = `録音完了（${recDuration.toFixed(1)}秒）。もう一度タップで録り直し`;
   }
 
   el.btnRec.addEventListener("click", async () => {
-    if (!canRecord) { toast("下のボタンから録音なしでお試しください"); return; }
-    if (recorder && recorder.state === "recording") { recorder.stop(); return; }
+    if (!canRecord) { toast(noRecordReason()); return; }
+    if (rec) { stopRecording(); return; }
     try {
       stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     } catch (e) {
       el.btnNoMic.hidden = false;
-      el.recStatus.textContent = "マイクの使用が許可されませんでした";
+      el.recStatus.textContent = e && e.name === "NotAllowedError"
+        ? "マイクの使用が許可されませんでした（ブラウザの設定で許可してください）"
+        : "マイクを起動できませんでした";
       return;
     }
-    chunks = [];
-    recorder = new MediaRecorder(stream);
-    recorder.ondataavailable = e => { if (e.data.size) chunks.push(e.data); };
-    recorder.onstop = () => {
-      clearInterval(recTimer);
-      stream.getTracks().forEach(t => t.stop());
-      recDuration = (Date.now() - recStart) / 1000;
-      recBlob = new Blob(chunks, { type: recorder.mimeType || "audio/webm" });
-      el.playback.src = URL.createObjectURL(recBlob);
-      el.playback.hidden = false;
-      el.btnEvaluate.hidden = false;
-      el.btnRec.classList.remove("recording");
-      el.btnRec.setAttribute("aria-label", "録音し直す");
-      el.recStatus.textContent = `録音完了（${recDuration.toFixed(1)}秒）。もう一度タップで録り直し`;
-    };
-    recorder.start();
+    try {
+      rec = HAS_MR ? startMediaRecorder(stream) : startWavRecorder(stream);
+    } catch (e) {
+      // MediaRecorder があっても形式非対応で失敗する端末向けに WAV で再試行
+      rec = HAS_WEBAUDIO ? startWavRecorder(stream) : null;
+      if (!rec) { el.recStatus.textContent = "録音を開始できませんでした"; el.btnNoMic.hidden = false; return; }
+    }
     recStart = Date.now();
     el.btnRec.classList.add("recording");
     el.btnRec.setAttribute("aria-label", "録音停止");
@@ -276,9 +401,29 @@
     recTimer = setInterval(() => {
       const sec = (Date.now() - recStart) / 1000;
       el.recStatus.textContent = `録音中… ${sec.toFixed(1)}秒（タップで停止）`;
-      if (sec >= MAX_REC_SEC) recorder.stop();
+      if (sec >= MAX_REC_SEC) stopRecording();
     }, 100);
   });
+
+  // ===== 対応状況の表示（設定タブ） =====
+  function renderDiagnostics() {
+    const mark = ok => (ok ? "○" : "×");
+    const rows = [
+      ["ブラウザ", IN_APP ? "アプリ内ブラウザ" : "通常ブラウザ"],
+      ["https 接続", mark(window.isSecureContext)],
+      ["マイク取得", mark(HAS_GUM)],
+      ["録音方式", HAS_MR ? "MediaRecorder" : HAS_WEBAUDIO ? "WAV（互換モード）" : "×"],
+      ["音声読み上げ", mark(HAS_TTS)],
+      ["韓国語の読み上げ音声", HAS_TTS ? `${koVoices().length} 件` : "×"]
+    ];
+    el.diag.innerHTML = "";
+    rows.forEach(([k, v]) => {
+      const dt = document.createElement("dt"); dt.textContent = k;
+      const dd = document.createElement("dd"); dd.textContent = v;
+      el.diag.append(dt, dd);
+    });
+    el.diagUa.textContent = UA;
+  }
 
   el.btnEvaluate.addEventListener("click", () => runEvaluation(recBlob, recDuration));
   el.btnNoMic.addEventListener("click", () => runEvaluation(null, null));
@@ -448,4 +593,5 @@
   syncRatio();
   renderSentence();
   renderStreak();
+  renderDiagnostics();
 })();
