@@ -1,31 +1,19 @@
 :root {
-  --bg: #f4f6fa;
-  --surface: #ffffff;
-  --text: #1b2230;
-  --muted: #6b7486;
-  --line: #e3e7ef;
-  --primary: #1f6feb;
+  color-scheme: dark;
+  --bg: #1c1c1e;
+  --surface: #2b2b2f;
+  --surface-2: #3a3a3f;
+  --text: #f2f2f4;
+  --muted: #9b9ba3;
+  --line: #44444a;
+  --primary: #ff8a1f;
   --primary-ink: #ffffff;
   --accent: #ff5a5f;
-  --ok: #1a9e5c;
-  --ja: #6d4cd8;
-  --ko: #0c8b8b;
-  --radius: 16px;
-  --shadow: 0 1px 2px rgba(20, 30, 50, .06), 0 4px 16px rgba(20, 30, 50, .05);
-}
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #0f131a;
-    --surface: #182030;
-    --text: #e8ecf3;
-    --muted: #94a0b5;
-    --line: #283245;
-    --primary: #5b9bff;
-    --primary-ink: #0b1220;
-    --ja: #a58cff;
-    --ko: #3cc7c7;
-    --shadow: none;
-  }
+  --ok: #67c23a;
+  --ja: #a58cff;
+  --ko: #3cc7c7;
+  --radius: 20px;
+  --shadow: none;
 }
 
 * { box-sizing: border-box; }
@@ -194,3 +182,70 @@ li[data-lang="ko"] .lang-chip { background: var(--ko); }
 .diag dt { color: var(--muted); }
 .diag dd { margin: 0; font-weight: 600; }
 .hint code { word-break: break-all; font-size: 11px; }
+
+/* ===== レッスン（単語テスト → 採点表 → 文章練習） ===== */
+body.focus .topbar, body.focus .tabbar, body.focus .inapp-banner { display: none; }
+body.focus { padding-bottom: env(safe-area-inset-bottom); }
+.lesson-step[hidden] { display: none !important; }
+
+.quiz-top { display: flex; align-items: center; gap: 14px; padding-top: env(safe-area-inset-top); margin-bottom: 18px; }
+.icon-btn {
+  flex: none; width: 44px; height: 44px; border-radius: 50%; border: 1px solid var(--line);
+  background: var(--surface); color: var(--text); font-size: 20px; cursor: pointer;
+}
+.quiz-progress { flex: 1; height: 8px; border-radius: 99px; background: var(--surface-2); overflow: hidden; }
+.quiz-progress i { display: block; height: 100%; width: 0; background: var(--primary); border-radius: 99px; transition: width .3s; }
+.quiz-card {
+  min-height: 46vh; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface);
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px; padding: 24px 16px;
+}
+.quiz-pill { background: var(--surface-2); border-radius: 999px; padding: 12px 34px 16px; text-align: center; }
+.quiz-pill small { display: block; color: var(--muted); font-size: 15px; }
+.quiz-pill b { display: block; font-size: 34px; line-height: 1.3; word-break: keep-all; }
+.quiz-q { color: var(--muted); font-size: 13px; margin: 0; }
+.quiz-skip-row { display: flex; justify-content: flex-end; margin: 12px 0; }
+.skip-btn {
+  width: 64px; height: 64px; border-radius: 50%; border: 2px solid var(--line); background: var(--surface);
+  color: var(--text); font-weight: 800; letter-spacing: .03em; cursor: pointer;
+}
+.quiz-options { display: grid; gap: 12px; }
+.opt {
+  display: flex; align-items: center; gap: 16px; width: 100%; min-height: 60px; padding: 12px 22px;
+  border-radius: 999px; border: 2px solid var(--line); background: var(--surface); color: var(--text);
+  font: inherit; font-size: 18px; text-align: left; cursor: pointer; transition: background .15s, border-color .15s;
+}
+.opt .num { color: var(--muted); font-size: 22px; font-weight: 700; width: 18px; text-align: center; }
+.opt.correct { border-color: var(--ok); background: color-mix(in srgb, var(--ok) 22%, var(--surface)); }
+.opt.wrong { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 22%, var(--surface)); }
+.opt:disabled { cursor: default; }
+
+.steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; text-align: center; margin-bottom: 16px; }
+.step-ico {
+  width: 64px; height: 64px; margin: 0 auto 6px; border-radius: 50%; border: 5px solid var(--surface-2);
+  display: grid; place-items: center; font-size: 26px;
+}
+.step.done .step-ico { border-color: var(--ok); }
+.step.now .step-ico { border-color: var(--primary); }
+.step span { font-size: 13px; font-weight: 700; }
+.step:not(.done):not(.now) span { color: var(--muted); font-weight: 400; }
+.score-row {
+  background: var(--surface-2); border-radius: 14px; padding: 12px; text-align: center; color: var(--muted); font-size: 15px;
+}
+.score-row b { color: var(--text); font-size: 28px; margin-left: 12px; }
+.score-row small { color: var(--text); font-size: 18px; font-weight: 700; }
+.score-main { text-align: center; padding: 22px 16px; }
+.score-chip { display: inline-block; background: color-mix(in srgb, var(--primary) 25%, transparent); color: var(--primary); font-weight: 800; border-radius: 999px; padding: 4px 16px; }
+.big-score { font-size: 72px; font-weight: 900; line-height: 1.1; margin-top: 8px; }
+.score-sub { color: var(--muted); margin: 4px 0 18px; }
+.coach { display: flex; align-items: center; gap: 12px; text-align: left; }
+.coach-avatar { flex: none; width: 64px; height: 64px; border-radius: 50%; background: var(--primary); display: grid; place-items: center; font-size: 34px; }
+.coach-bubble { flex: 1; border: 2px solid var(--line); border-radius: 16px; padding: 12px 14px; font-weight: 600; font-size: 15px; position: relative; }
+.coach-bubble::before { content: ""; position: absolute; left: -9px; top: 50%; width: 14px; height: 14px; background: var(--surface); border-left: 2px solid var(--line); border-bottom: 2px solid var(--line); transform: translateY(-50%) rotate(45deg); }
+.coach-bubble small { display: block; color: var(--muted); font-weight: 400; margin-top: 4px; }
+.review-list { list-style: none; padding: 0; margin: 0; }
+.review-list li { display: flex; justify-content: space-between; gap: 12px; padding: 8px 0; border-top: 1px solid var(--line); font-size: 15px; }
+.review-list li:first-child { border-top: 0; }
+.review-list b { font-size: 17px; }
+.btn.cta { background: var(--primary); color: var(--primary-ink); border: 0; border-radius: 16px; min-height: 58px; font-size: 18px; font-weight: 800; box-shadow: 0 4px 0 color-mix(in srgb, var(--primary) 60%, #000); }
+.step-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+.step-head .tag { font-size: 12px; font-weight: 800; color: var(--primary); }

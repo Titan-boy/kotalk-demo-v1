@@ -20,7 +20,9 @@
     restWeeks: [],       // 休息券を使った週（その週の月曜日）
     requests: [],        // 講師1:1フィードバック申請
     ratio: "ja6",
-    idx: 0
+    idx: 0,
+    quizDate: null,      // 単語テストを最後に受けた日（ポイントは1日1回）
+    lastQuizScore: null
   });
 
   let state = load();
@@ -167,7 +169,13 @@
     btnSkipDay: $("btnSkipDay"), btnAddPts: $("btnAddPts"), btnReset: $("btnReset"), demoToday: $("demoToday"),
     toast: $("toast"),
     inAppBanner: $("inAppBanner"), btnCopyUrl: $("btnCopyUrl"), ttsHelp: $("ttsHelp"),
-    diag: $("diag"), diagUa: $("diagUa")
+    diag: $("diag"), diagUa: $("diagUa"),
+    stepQuiz: $("stepQuiz"), stepScore: $("stepScore"), stepSentence: $("stepSentence"),
+    btnQuizClose: $("btnQuizClose"), quizBar: $("quizBar"), quizNo: $("quizNo"), quizWord: $("quizWord"),
+    btnSkip: $("btnSkip"), quizOptions: $("quizOptions"),
+    quizCorrect: $("quizCorrect"), quizTotal: $("quizTotal"), vocabScore: $("vocabScore"), scoreSub: $("scoreSub"),
+    coachMsg: $("coachMsg"), reviewCard: $("reviewCard"), reviewList: $("reviewList"),
+    btnToSentence: $("btnToSentence"), btnRetryQuiz: $("btnRetryQuiz")
   };
 
   let toastTimer;
@@ -210,6 +218,7 @@
     save();
     resetRecording();
     renderSentence();
+    startQuiz();
   });
 
   // ===== 端末・ブラウザの対応状況 =====
@@ -573,6 +582,7 @@
     save();
     resetRecording();
     renderSentence();
+    startQuiz();
     renderStreak();
     syncRatio();
   });
@@ -589,9 +599,151 @@
     });
   });
 
+  // ===== レッスンの流れ：単語テスト → 採点表 → 文章練習 =====
+  const QUIZ_POINTS_PER_CORRECT = 2;
+  let quiz = null; // { items: [{ko, ja, options[]}], i, answers: [bool] }
+
+  const shuffle = arr => {
+    const a = arr.slice();
+    for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; }
+    return a;
+  };
+
+  function showStep(step) {
+    const practiceTab = document.querySelector('.tab[data-view="practice"]');
+    if (!practiceTab.classList.contains("active")) practiceTab.click();
+    el.stepQuiz.hidden = step !== "quiz";
+    el.stepScore.hidden = step !== "score";
+    el.stepSentence.hidden = step !== "sentence";
+    document.body.classList.toggle("focus", step === "quiz");
+    window.scrollTo(0, 0);
+  }
+
+  function startQuiz() {
+    const words = current().words;
+    // 選択肢：正解 + 同じ例文の単語リストから3つ
+    const items = shuffle(words).map(w => ({
+      ko: w.ko,
+      ja: w.ja,
+      options: shuffle([w.ja, ...shuffle(words.filter(x => x.ja !== w.ja)).slice(0, 3).map(x => x.ja)])
+    }));
+    quiz = { items, i: 0, answers: [] };
+    showStep("quiz");
+    renderQuestion();
+  }
+
+  function renderQuestion() {
+    const q = quiz.items[quiz.i];
+    const n = quiz.items.length;
+    el.quizBar.style.width = `${(quiz.i / n) * 100}%`;
+    el.quizNo.textContent = `${quiz.i + 1} / ${n}`;
+    el.quizWord.textContent = q.ko;
+    el.quizOptions.innerHTML = "";
+    q.options.forEach((opt, k) => {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "opt";
+      b.innerHTML = `<span class="num">${k + 1}</span><span class="opt-text"></span>`;
+      b.lastChild.textContent = opt;
+      b.addEventListener("click", () => answer(opt, b));
+      el.quizOptions.appendChild(b);
+    });
+    el.btnSkip.disabled = false;
+  }
+
+  function answer(choice, btn) {
+    const q = quiz.items[quiz.i];
+    const ok = choice === q.ja;
+    quiz.answers[quiz.i] = ok;
+    el.btnSkip.disabled = true;
+    el.quizOptions.querySelectorAll(".opt").forEach(b => {
+      b.disabled = true;
+      if (b.lastChild.textContent === q.ja) b.classList.add("correct");
+    });
+    if (btn && !ok) btn.classList.add("wrong");
+    setTimeout(nextQuestion, ok ? 600 : 1100);
+  }
+
+  function nextQuestion() {
+    quiz.i++;
+    if (quiz.i < quiz.items.length) renderQuestion();
+    else finishQuiz();
+  }
+
+  el.btnSkip.addEventListener("click", () => answer(null, null));
+  el.btnQuizClose.addEventListener("click", () => {
+    if (!confirm("単語テストを終了して採点しますか？（未回答は不正解になります）")) return;
+    finishQuiz();
+  });
+
+  function finishQuiz() {
+    const n = quiz.items.length;
+    const correct = quiz.answers.filter(Boolean).length;
+    const score = Math.round((correct / n) * 100);
+    const prev = state.lastQuizScore;
+    // テストのポイントは1日1回だけ
+    let gained = 0;
+    if (state.quizDate !== today()) {
+      gained = correct * QUIZ_POINTS_PER_CORRECT;
+      state.points += gained;
+      state.quizDate = today();
+    }
+    state.lastQuizScore = score;
+    save();
+    renderPoints();
+    renderScoreSheet({ correct, n, score, prev, gained });
+    showStep("score");
+  }
+
+  function coachMessage(score, prev) {
+    if (prev != null && score > prev) return { ja: `前回より ${score - prev} 点アップ！この調子で文章にも挑戦しよう！`, ko: `지난번보다 ${score - prev}점 올랐어요! 이 기세로 문장도 도전해 봐요!` };
+    if (score === 100) return { ja: "全問正解！完璧です。文章でも使ってみよう！", ko: "만점이에요! 완벽해요. 문장에서도 써 봐요!" };
+    if (score >= 70) return { ja: "いい感じ！間違えた単語を確認してから文章練習へ。", ko: "좋아요! 틀린 단어를 확인하고 문장 연습으로 가요." };
+    return { ja: "大丈夫、ここからです。下の単語を見直してから進もう！", ko: "괜찮아요, 지금부터예요. 아래 단어를 다시 보고 가요!" };
+  }
+
+  function renderScoreSheet({ correct, n, score, prev, gained }) {
+    el.quizCorrect.textContent = correct;
+    el.quizTotal.textContent = n;
+    el.vocabScore.textContent = score;
+    const parts = [];
+    if (prev != null) parts.push(`前回: ${prev}`);
+    parts.push(gained ? `+${gained}pt 獲得` : "今日のポイントは獲得済み");
+    el.scoreSub.textContent = parts.join("　/　");
+    // 吹き出しは言語バランス設定に合わせて主言語を決め、もう一方を小さく添える
+    const msg = coachMessage(score, prev);
+    const main = state.ratio === "ja6" ? "ja" : "ko";
+    const sub = main === "ja" ? "ko" : "ja";
+    el.coachMsg.innerHTML = "<span></span><small></small>";
+    el.coachMsg.firstChild.textContent = msg[main];
+    el.coachMsg.firstChild.lang = main;
+    el.coachMsg.lastChild.textContent = msg[sub];
+    el.coachMsg.lastChild.lang = sub;
+
+    const wrong = quiz.items.filter((q, k) => !quiz.answers[k]);
+    el.reviewCard.hidden = wrong.length === 0;
+    el.reviewList.innerHTML = "";
+    wrong.forEach(q => {
+      const li = document.createElement("li");
+      li.innerHTML = "<b lang=\"ko\"></b><span></span>";
+      li.firstChild.textContent = q.ko;
+      li.lastChild.textContent = q.ja;
+      el.reviewList.appendChild(li);
+    });
+  }
+
+  el.btnToSentence.addEventListener("click", () => {
+    resetRecording();
+    showStep("sentence");
+  });
+  el.btnRetryQuiz.addEventListener("click", startQuiz);
+
   // ===== 初期表示 =====
   syncRatio();
   renderSentence();
   renderStreak();
   renderDiagnostics();
+  // 今日すでに単語テストを終えていれば文章練習から、まだなら単語テストから始める
+  if (state.quizDate === today()) showStep("sentence");
+  else startQuiz();
 })();

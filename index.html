@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#1f6feb">
+  <meta name="theme-color" content="#1c1c1e">
   <title>KoTalk デモ</title>
   <link rel="stylesheet" href="style.css">
 </head>
@@ -19,10 +19,53 @@
   </div>
 
   <main>
-    <!-- ===== 1. 練習（例文 → 録音 → フィードバック） ===== -->
+    <!-- ===== 1. 今日のレッスン（単語テスト → 採点表 → 文章練習） ===== -->
     <section id="view-practice" class="view active" aria-labelledby="h-practice">
-      <h1 id="h-practice" class="sr-only">今日の練習</h1>
+      <h1 id="h-practice" class="sr-only">今日のレッスン</h1>
 
+      <!-- STEP 1: 単語テスト -->
+      <div class="lesson-step" id="stepQuiz">
+        <div class="quiz-top">
+          <button class="icon-btn" id="btnQuizClose" type="button" aria-label="テストを終了">✕</button>
+          <div class="quiz-progress" role="progressbar" aria-label="進み具合"><i id="quizBar"></i></div>
+        </div>
+        <div class="quiz-card">
+          <div class="quiz-pill"><small id="quizNo">1 / 10</small><b id="quizWord" lang="ko"></b></div>
+          <p class="quiz-q">意味を選んでください</p>
+        </div>
+        <div class="quiz-skip-row"><button class="skip-btn" id="btnSkip" type="button">SKIP</button></div>
+        <div class="quiz-options" id="quizOptions"></div>
+      </div>
+
+      <!-- STEP 2: 採点表 -->
+      <div class="lesson-step" id="stepScore" hidden>
+        <div class="card">
+          <div class="steps">
+            <div class="step done"><div class="step-ico">🔤</div><span>単語</span></div>
+            <div class="step now"><div class="step-ico">📊</div><span>採点</span></div>
+            <div class="step"><div class="step-ico">🎙️</div><span>文章練習</span></div>
+          </div>
+          <div class="score-row">今回の正解数<b id="quizCorrect">0</b><small> / <span id="quizTotal">10</span></small></div>
+        </div>
+        <div class="card score-main">
+          <span class="score-chip">語彙スコア</span>
+          <div class="big-score" id="vocabScore">0</div>
+          <p class="score-sub" id="scoreSub"></p>
+          <div class="coach">
+            <div class="coach-avatar" aria-hidden="true">🐯</div>
+            <div class="coach-bubble" id="coachMsg"></div>
+          </div>
+        </div>
+        <div class="card" id="reviewCard" hidden>
+          <div class="card-label">復習する単語</div>
+          <ul class="review-list" id="reviewList"></ul>
+        </div>
+        <button class="btn cta block" id="btnToSentence" type="button">文章練習へ</button>
+      </div>
+
+      <!-- STEP 3: 文章練習 -->
+      <div class="lesson-step" id="stepSentence" hidden>
+      <div class="step-head"><span class="tag">STEP 3 / 3　文章練習</span><button class="btn link" id="btnRetryQuiz" type="button">単語テストをもう一度</button></div>
       <div class="card sentence-card">
         <div class="card-label">今日の例文 <span class="muted" id="sentenceIndex"></span></div>
         <p class="ko-sentence" id="koSentence" lang="ko"></p>
@@ -33,7 +76,7 @@
         </details>
         <div class="row">
           <button class="btn ghost" id="btnModel" type="button">🔊 お手本を聞く</button>
-          <button class="btn ghost" id="btnNext" type="button">次の例文 →</button>
+          <button class="btn ghost" id="btnNext" type="button">次のレッスン →</button>
         </div>
         <div class="help-box" id="ttsHelp" hidden></div>
       </div>
@@ -61,6 +104,7 @@
         <div class="reward" id="rewardBox" hidden></div>
         <button class="btn primary block" id="btnRetry" type="button">もう一度録音する</button>
       </div>
+      </div>
     </section>
 
     <!-- ===== 2. 出席・ポイント ===== -->
@@ -83,7 +127,8 @@
       <div class="card">
         <div class="card-label">ルール</div>
         <ul class="rules">
-          <li>1日1回、録音して評価を受けると出席（+10pt）</li>
+          <li>単語テストの正解1問につき +2pt（1日1回）</li>
+          <li>1日1回、文章を録音して評価を受けると出席（+10pt）</li>
           <li>7日連続ごとにボーナス +30pt</li>
           <li>休息券は週1枚（月曜リセット）。1日だけ休んでも、翌日練習すれば連続記録が自動で守られます</li>
         </ul>
@@ -138,7 +183,7 @@
   </main>
 
   <nav class="tabbar" aria-label="メニュー">
-    <button class="tab active" data-view="practice" type="button"><span>🎙️</span>練習</button>
+    <button class="tab active" data-view="practice" type="button"><span>📘</span>レッスン</button>
     <button class="tab" data-view="streak" type="button"><span>🔥</span>出席</button>
     <button class="tab" data-view="settings" type="button"><span>⚙️</span>設定</button>
   </nav>
