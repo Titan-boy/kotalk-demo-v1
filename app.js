@@ -156,7 +156,7 @@
   const el = {
     pointsTop: $("pointsTop"),
     koSentence: $("koSentence"), jaTranslation: $("jaTranslation"), pronPoints: $("pronPoints"), sentenceIndex: $("sentenceIndex"),
-    btnModel: $("btnModel"), btnNext: $("btnNext"),
+    btnModel: $("btnModel"), btnWordsFromTalk: $("btnWordsFromTalk"), btnToQuiz: $("btnToQuiz"),
     btnRec: $("btnRec"), recStatus: $("recStatus"), playback: $("playback"),
     btnEvaluate: $("btnEvaluate"), btnNoMic: $("btnNoMic"),
     recordCard: $("recordCard"), resultCard: $("resultCard"),
@@ -170,12 +170,20 @@
     toast: $("toast"),
     inAppBanner: $("inAppBanner"), btnCopyUrl: $("btnCopyUrl"), ttsHelp: $("ttsHelp"),
     diag: $("diag"), diagUa: $("diagUa"),
+    stepStart: $("stepStart"), stepWords: $("stepWords"),
     stepQuiz: $("stepQuiz"), stepScore: $("stepScore"), stepSentence: $("stepSentence"),
+    startDate: $("startDate"), startIndex: $("startIndex"), startKo: $("startKo"), startJa: $("startJa"),
+    startStreak: $("startStreak"), startDone: $("startDone"),
+    btnStartWords: $("btnStartWords"), btnStartTalk: $("btnStartTalk"), btnStartNext: $("btnStartNext"),
+    btnWordsClose: $("btnWordsClose"), wordsBar: $("wordsBar"), wordCard: $("wordCard"), wordTag: $("wordTag"),
+    wordNo: $("wordNo"), wordKo: $("wordKo"), wordJa: $("wordJa"), wordHint: $("wordHint"), wordSentence: $("wordSentence"),
+    btnWordPrev: $("btnWordPrev"), btnWordNext: $("btnWordNext"),
+    quizTag: $("quizTag"), stepIcoWords: $("stepIcoWords"), btnSentenceHome: $("btnSentenceHome"),
     btnQuizClose: $("btnQuizClose"), quizBar: $("quizBar"), quizNo: $("quizNo"), quizWord: $("quizWord"),
     btnSkip: $("btnSkip"), quizOptions: $("quizOptions"),
     quizCorrect: $("quizCorrect"), quizTotal: $("quizTotal"), vocabScore: $("vocabScore"), scoreSub: $("scoreSub"),
     coachMsg: $("coachMsg"), reviewCard: $("reviewCard"), reviewList: $("reviewList"),
-    btnToSentence: $("btnToSentence"), btnRetryQuiz: $("btnRetryQuiz")
+    btnScoreHome: $("btnScoreHome"), btnScoreNext: $("btnScoreNext")
   };
 
   let toastTimer;
@@ -212,14 +220,6 @@
       el.pronPoints.appendChild(li);
     });
   }
-
-  el.btnNext.addEventListener("click", () => {
-    state.idx = (state.idx + 1) % window.SENTENCES.length;
-    save();
-    resetRecording();
-    renderSentence();
-    startQuiz();
-  });
 
   // ===== 端末・ブラウザの対応状況 =====
   const UA = navigator.userAgent;
@@ -582,7 +582,7 @@
     save();
     resetRecording();
     renderSentence();
-    startQuiz();
+    goStart();
     renderStreak();
     syncRatio();
   });
@@ -599,32 +599,117 @@
     });
   });
 
-  // ===== レッスンの流れ：単語テスト → 採点表 → 文章練習 =====
+  // ===== レッスンの流れ =====
+  // スタート画面 →（じっくり単語練習 →）会話練習（例文・録音・フィードバック）→ 関連単語クイズ → 採点表
   const QUIZ_POINTS_PER_CORRECT = 2;
-  let quiz = null; // { items: [{ko, ja, options[]}], i, answers: [bool] }
+  let quiz = null;          // { items: [{ko, ja, inSentence, options[]}], i, answers: [bool] }
+  let wordIdx = 0;          // じっくり単語練習の現在位置
+  let wordsStudied = false; // このレッスンで単語練習をしたか
+  let wordsReturn = "sentence"; // 単語練習を終えた後の行き先
 
   const shuffle = arr => {
     const a = arr.slice();
     for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; }
     return a;
   };
+  const tagLabel = w => (w.inSentence ? "例文の単語" : "関連する新しい単語");
+  const setTag = (node, w) => { node.textContent = tagLabel(w); node.classList.toggle("new", !w.inSentence); };
 
   function showStep(step) {
     const practiceTab = document.querySelector('.tab[data-view="practice"]');
     if (!practiceTab.classList.contains("active")) practiceTab.click();
-    el.stepQuiz.hidden = step !== "quiz";
-    el.stepScore.hidden = step !== "score";
-    el.stepSentence.hidden = step !== "sentence";
-    document.body.classList.toggle("focus", step === "quiz");
+    ["Start", "Words", "Sentence", "Quiz", "Score"].forEach(k => {
+      el[`step${k}`].hidden = step !== k.toLowerCase();
+    });
+    document.body.classList.toggle("focus", step === "quiz" || step === "words");
     window.scrollTo(0, 0);
   }
 
+  // ----- スタート画面 -----
+  function goStart() {
+    const s = current();
+    const n = window.SENTENCES.length;
+    const d = fromKey(today());
+    el.startDate.textContent = `${d.getMonth() + 1}月${d.getDate()}日`;
+    el.startIndex.textContent = `${(state.idx % n) + 1} / ${n}`;
+    el.startKo.textContent = s.ko;
+    el.startJa.textContent = s.ja;
+    const st = streakStatus();
+    el.startStreak.textContent = `🔥 連続 ${st.streak}日`;
+    el.startDone.textContent = state.last === today() ? "✅ 今日の出席 完了" : "今日はまだ未出席";
+    wordsStudied = false;
+    resetRecording();
+    showStep("start");
+  }
+
+  function nextLesson() {
+    state.idx = (state.idx + 1) % window.SENTENCES.length;
+    save();
+    renderSentence();
+    goStart();
+  }
+
+  el.btnStartWords.addEventListener("click", () => startWords("sentence"));
+  el.btnStartTalk.addEventListener("click", goSentence);
+  el.btnStartNext.addEventListener("click", nextLesson);
+
+  // ----- じっくり単語練習 -----
+  function startWords(returnTo) {
+    wordsReturn = returnTo;
+    wordIdx = 0;
+    showStep("words");
+    renderWord();
+  }
+
+  function renderWord() {
+    const words = current().words;
+    const w = words[wordIdx];
+    el.wordsBar.style.width = `${((wordIdx + 1) / words.length) * 100}%`;
+    el.wordNo.textContent = `${wordIdx + 1} / ${words.length}`;
+    el.wordKo.textContent = w.ko;
+    el.wordJa.textContent = w.ja;
+    el.wordJa.hidden = true;
+    el.wordHint.hidden = false;
+    setTag(el.wordTag, w);
+    el.wordSentence.textContent = w.inSentence ? current().ko : "";
+    el.wordSentence.hidden = true;
+    el.btnWordPrev.disabled = wordIdx === 0;
+    el.btnWordNext.textContent = wordIdx === words.length - 1 ? "会話練習へ →" : "次へ →";
+  }
+
+  el.wordCard.addEventListener("click", () => {
+    el.wordJa.hidden = false;
+    el.wordHint.hidden = true;
+    el.wordSentence.hidden = !current().words[wordIdx].inSentence;
+  });
+  el.btnWordPrev.addEventListener("click", () => { if (wordIdx > 0) { wordIdx--; renderWord(); } });
+  el.btnWordNext.addEventListener("click", () => {
+    if (wordIdx < current().words.length - 1) { wordIdx++; renderWord(); return; }
+    wordsStudied = true;
+    goSentence();
+  });
+  el.btnWordsClose.addEventListener("click", () => {
+    if (wordsReturn === "sentence" && el.resultCard.hidden && !wordsStudied) goStart();
+    else showStep("sentence");
+  });
+
+  // ----- 会話練習 -----
+  function goSentence() {
+    showStep("sentence");
+  }
+  el.btnSentenceHome.addEventListener("click", goStart);
+  el.btnWordsFromTalk.addEventListener("click", () => startWords("talk"));
+  el.btnToQuiz.addEventListener("click", startQuiz);
+
+  // ----- 関連単語クイズ（例文の単語4語 ＋ 関連する新しい単語6語） -----
   function startQuiz() {
     const words = current().words;
-    // 選択肢：正解 + 同じ例文の単語リストから3つ
-    const items = shuffle(words).map(w => ({
+    // 例文の単語を先に、関連する新しい単語を後に出す（それぞれの中ではランダム）
+    const ordered = [...shuffle(words.filter(w => w.inSentence)), ...shuffle(words.filter(w => !w.inSentence))];
+    const items = ordered.map(w => ({
       ko: w.ko,
       ja: w.ja,
+      inSentence: !!w.inSentence,
       options: shuffle([w.ja, ...shuffle(words.filter(x => x.ja !== w.ja)).slice(0, 3).map(x => x.ja)])
     }));
     quiz = { items, i: 0, answers: [] };
@@ -638,6 +723,7 @@
     el.quizBar.style.width = `${(quiz.i / n) * 100}%`;
     el.quizNo.textContent = `${quiz.i + 1} / ${n}`;
     el.quizWord.textContent = q.ko;
+    setTag(el.quizTag, q);
     el.quizOptions.innerHTML = "";
     q.options.forEach((opt, k) => {
       const b = document.createElement("button");
@@ -672,7 +758,7 @@
 
   el.btnSkip.addEventListener("click", () => answer(null, null));
   el.btnQuizClose.addEventListener("click", () => {
-    if (!confirm("単語テストを終了して採点しますか？（未回答は不正解になります）")) return;
+    if (!confirm("単語クイズを終了して採点しますか？（未回答は不正解になります）")) return;
     finishQuiz();
   });
 
@@ -681,7 +767,7 @@
     const correct = quiz.answers.filter(Boolean).length;
     const score = Math.round((correct / n) * 100);
     const prev = state.lastQuizScore;
-    // テストのポイントは1日1回だけ
+    // クイズのポイントは1日1回だけ
     let gained = 0;
     if (state.quizDate !== today()) {
       gained = correct * QUIZ_POINTS_PER_CORRECT;
@@ -696,19 +782,23 @@
   }
 
   function coachMessage(score, prev) {
-    if (prev != null && score > prev) return { ja: `前回より ${score - prev} 点アップ！この調子で文章にも挑戦しよう！`, ko: `지난번보다 ${score - prev}점 올랐어요! 이 기세로 문장도 도전해 봐요!` };
-    if (score === 100) return { ja: "全問正解！完璧です。文章でも使ってみよう！", ko: "만점이에요! 완벽해요. 문장에서도 써 봐요!" };
-    if (score >= 70) return { ja: "いい感じ！間違えた単語を確認してから文章練習へ。", ko: "좋아요! 틀린 단어를 확인하고 문장 연습으로 가요." };
-    return { ja: "大丈夫、ここからです。下の単語を見直してから進もう！", ko: "괜찮아요, 지금부터예요. 아래 단어를 다시 보고 가요!" };
+    if (prev != null && score > prev) return { ja: `前回より ${score - prev} 点アップ！この調子で続けよう！`, ko: `지난번보다 ${score - prev}점 올랐어요! 이대로 계속해 봐요!` };
+    if (score === 100) return { ja: "全問正解！完璧です。明日もこの調子で！", ko: "만점이에요! 완벽해요. 내일도 이렇게 해 봐요!" };
+    if (score >= 70) return { ja: "いい感じ！間違えた単語だけ見直しておこう。", ko: "좋아요! 틀린 단어만 다시 봐 둬요." };
+    return { ja: "大丈夫、ここからです。次は「じっくり単語練習」から始めてみよう！", ko: "괜찮아요, 지금부터예요. 다음에는 '단어 연습'부터 시작해 봐요!" };
   }
 
   function renderScoreSheet({ correct, n, score, prev, gained }) {
+    el.stepIcoWords.classList.toggle("done", wordsStudied);
     el.quizCorrect.textContent = correct;
     el.quizTotal.textContent = n;
     el.vocabScore.textContent = score;
-    const parts = [];
-    if (prev != null) parts.push(`前回: ${prev}`);
-    parts.push(gained ? `+${gained}pt 獲得` : "今日のポイントは獲得済み");
+    const inS = quiz.items.map((q, k) => [q, quiz.answers[k]]);
+    const cIn = inS.filter(([q, ok]) => q.inSentence && ok).length;
+    const cNew = inS.filter(([q, ok]) => !q.inSentence && ok).length;
+    const parts = [`例文の単語 ${cIn}/4・新しい単語 ${cNew}/6`];
+    if (prev != null) parts.push(`前回 ${prev}`);
+    parts.push(gained ? `+${gained}pt` : "本日のpt獲得済み");
     el.scoreSub.textContent = parts.join("　/　");
     // 吹き出しは言語バランス設定に合わせて主言語を決め、もう一方を小さく添える
     const msg = coachMessage(score, prev);
@@ -732,18 +822,13 @@
     });
   }
 
-  el.btnToSentence.addEventListener("click", () => {
-    resetRecording();
-    showStep("sentence");
-  });
-  el.btnRetryQuiz.addEventListener("click", startQuiz);
+  el.btnScoreHome.addEventListener("click", goStart);
+  el.btnScoreNext.addEventListener("click", nextLesson);
 
   // ===== 初期表示 =====
   syncRatio();
   renderSentence();
   renderStreak();
   renderDiagnostics();
-  // 今日すでに単語テストを終えていれば文章練習から、まだなら単語テストから始める
-  if (state.quizDate === today()) showStep("sentence");
-  else startQuiz();
+  goStart();
 })();
