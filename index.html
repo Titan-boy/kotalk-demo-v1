@@ -35,15 +35,24 @@
         </div>
         <button class="choice" id="btnStartWords" type="button">
           <span class="choice-ico">🐢</span>
-          <span class="choice-body"><b>じっくり単語練習から</b><small>単語10語を確認 → 会話練習 → 単語クイズ</small></span>
+          <span class="choice-body"><span class="rec-badge" id="startBadge" hidden>初めての方におすすめ</span><b>じっくり単語練習から</b><small>約5分｜単語10語 → 会話 → クイズ</small></span>
           <span class="choice-arrow">›</span>
         </button>
         <button class="choice primary" id="btnStartTalk" type="button">
           <span class="choice-ico">⚡</span>
-          <span class="choice-body"><b>すぐに会話練習</b><small>例文 → 録音 → 単語クイズ</small></span>
+          <span class="choice-body"><b>すぐに会話練習</b><small>約3分｜例文 → 録音 → クイズ</small></span>
           <span class="choice-arrow">›</span>
         </button>
-        <button class="btn link" id="btnStartNext" type="button">別のレッスンにする →</button>
+        <div class="start-links">
+          <button class="btn link" id="btnStartList" type="button">📋 レッスン一覧</button>
+          <button class="btn link" id="btnStartNext" type="button">別のレッスンにする →</button>
+        </div>
+      </div>
+
+      <!-- レッスン一覧 -->
+      <div class="lesson-step" id="stepList" hidden>
+        <div class="step-head"><span class="tag">レッスン一覧</span><button class="btn link" id="btnListBack" type="button">← 戻る</button></div>
+        <ul class="lesson-list" id="lessonList"></ul>
       </div>
 
       <!-- じっくり単語練習（カード形式） -->
@@ -52,16 +61,24 @@
           <button class="icon-btn" id="btnWordsClose" type="button" aria-label="単語練習を終了">✕</button>
           <div class="quiz-progress" role="progressbar" aria-label="進み具合"><i id="wordsBar"></i></div>
         </div>
-        <button class="quiz-card word-card" id="wordCard" type="button" aria-label="タップで意味を表示">
+        <div class="quiz-card word-card">
           <span class="word-tag" id="wordTag"></span>
           <div class="quiz-pill"><small id="wordNo">1 / 10</small><b id="wordKo" lang="ko"></b></div>
-          <p class="word-ja" id="wordJa" hidden></p>
-          <p class="word-hint" id="wordHint">タップして意味を表示</p>
-          <p class="word-sentence" id="wordSentence" lang="ko" hidden></p>
-        </button>
+          <button class="btn ghost speak-btn" id="btnWordSpeak" type="button">🔊 発音を聞く</button>
+          <button class="reveal-btn" id="btnReveal" type="button">タップして意味を表示</button>
+          <div class="word-back" id="wordBack" hidden>
+            <p class="word-kana" id="wordKana"></p>
+            <p class="word-ja" id="wordJa"></p>
+            <p class="word-sentence" id="wordSentence"></p>
+          </div>
+        </div>
+        <div class="rate-row" id="rateRow" hidden>
+          <button class="btn ghost" id="btnMada" type="button">🔁 まだ</button>
+          <button class="btn ghost" id="btnOboeta" type="button">✅ 覚えた</button>
+        </div>
         <div class="row">
           <button class="btn ghost" id="btnWordPrev" type="button">← 前へ</button>
-          <button class="btn cta" id="btnWordNext" type="button">次へ →</button>
+          <button class="btn cta" id="btnWordNext" type="button" disabled>次へ →</button>
         </div>
       </div>
 
@@ -78,6 +95,12 @@
         </div>
         <div class="quiz-skip-row"><button class="skip-btn" id="btnSkip" type="button">SKIP</button></div>
         <div class="quiz-options" id="quizOptions"></div>
+        <div class="quiz-feedback" id="quizFeedback" hidden aria-live="polite">
+          <p class="qf-title" id="qfTitle"></p>
+          <p class="qf-answer" id="qfAnswer"></p>
+          <p class="qf-ex" id="qfEx"></p>
+          <button class="btn cta block" id="btnQuizNext" type="button">次へ →</button>
+        </div>
       </div>
 
       <!-- 採点表 -->
@@ -139,12 +162,13 @@
         <p class="rec-status" id="recStatus">マイクをタップして録音</p>
         <audio id="playback" controls hidden></audio>
         <button class="btn primary block" id="btnEvaluate" type="button" hidden>この録音で評価する</button>
-        <button class="btn link" id="btnNoMic" type="button" hidden>マイクが使えない場合：録音なしでデモ評価</button>
+        <button class="btn link" id="btnNoMic" type="button" hidden>デモ評価を見る（仮点数）</button>
       </div>
 
       <!-- フィードバック -->
       <div class="card" id="resultCard" hidden>
-        <div class="card-label">フィードバック <span class="mock-tag">ダミー採点</span></div>
+        <div class="demo-banner" role="note">これはデモ用の仮点数です<br><small>（実際の発音評価ではありません）</small></div>
+        <div class="card-label">フィードバック</div>
         <div class="score-ring" id="scoreRing"><span id="scoreTotal">--</span><small>点</small></div>
         <div class="sub-scores" id="subScores"></div>
         <div class="ratio-note" id="ratioNote"></div>

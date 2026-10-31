@@ -23,6 +23,8 @@
     ratio: "ja6",
     sfx: true,           // 効果音
     idx: 0,
+    completed: {},       // 完了したレッスン { レッスン番号: { date, score } }
+    mada: {},            // 単語カードで「まだ」にした単語 { レッスン番号: [ko, ...] }
     quizDate: null,      // 単語テストを最後に受けた日（ポイントは1日1回）
     lastQuizScore: null
   });
@@ -224,9 +226,14 @@
     startDate: $("startDate"), startIndex: $("startIndex"), startKo: $("startKo"), startJa: $("startJa"),
     startStreak: $("startStreak"), startDone: $("startDone"),
     btnStartWords: $("btnStartWords"), btnStartTalk: $("btnStartTalk"), btnStartNext: $("btnStartNext"),
-    btnWordsClose: $("btnWordsClose"), wordsBar: $("wordsBar"), wordCard: $("wordCard"), wordTag: $("wordTag"),
-    wordNo: $("wordNo"), wordKo: $("wordKo"), wordJa: $("wordJa"), wordHint: $("wordHint"), wordSentence: $("wordSentence"),
+    btnWordsClose: $("btnWordsClose"), wordsBar: $("wordsBar"), wordTag: $("wordTag"),
+    wordNo: $("wordNo"), wordKo: $("wordKo"), wordJa: $("wordJa"), wordKana: $("wordKana"), wordSentence: $("wordSentence"),
+    btnWordSpeak: $("btnWordSpeak"), btnReveal: $("btnReveal"), wordBack: $("wordBack"),
+    rateRow: $("rateRow"), btnMada: $("btnMada"), btnOboeta: $("btnOboeta"),
     btnWordPrev: $("btnWordPrev"), btnWordNext: $("btnWordNext"),
+    stepList: $("stepList"), lessonList: $("lessonList"), btnListBack: $("btnListBack"), btnStartList: $("btnStartList"),
+    startBadge: $("startBadge"),
+    quizFeedback: $("quizFeedback"), qfTitle: $("qfTitle"), qfAnswer: $("qfAnswer"), qfEx: $("qfEx"), btnQuizNext: $("btnQuizNext"),
     quizTag: $("quizTag"), stepIcoWords: $("stepIcoWords"), btnSentenceHome: $("btnSentenceHome"),
     btnQuizClose: $("btnQuizClose"), quizBar: $("quizBar"), quizNo: $("quizNo"), quizWord: $("quizWord"),
     btnSkip: $("btnSkip"), quizOptions: $("quizOptions"),
@@ -439,11 +446,17 @@
     sfx.unlock();
     try {
       stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      if (micPerm !== "granted") { micPerm = "granted"; renderDiagnostics(); }
     } catch (e) {
       el.btnNoMic.hidden = false;
-      el.recStatus.textContent = e && e.name === "NotAllowedError"
-        ? "マイクの使用が許可されませんでした（ブラウザの設定で許可してください）"
-        : "マイクを起動できませんでした";
+      const name = e && e.name;
+      const noDevice = name === "NotFoundError" || name === "OverconstrainedError";
+      if (!noDevice) micPerm = "denied";
+      // マイクがない場合以外は、ほぼ権限の問題なので許可の手順を出す
+      el.recStatus.textContent = noDevice
+        ? "マイクが見つかりませんでした（イヤホンのマイク等を接続してください）"
+        : `マイクの使用が許可されていません。${micHowTo()}`;
+      renderDiagnostics();
       return;
     }
     try {
@@ -481,12 +494,35 @@
   });
 
   // ===== 対応状況の表示（設定タブ） =====
+  // ブラウザごとのマイク許可の手順（1行）
+  function micHowTo() {
+    if (IN_APP) return "Safari / Chrome で開き直してください。";
+    if (IS_IOS) return "許可するには：アドレスバーの「ぁあ」→「Webサイトの設定」→「マイク」→「許可」";
+    if (/Android/i.test(UA)) return "許可するには：アドレスバー左のアイコン →「権限」→「マイク」→「許可」";
+    return "許可するには：アドレスバー左のアイコン → マイクを「許可」→ ページを再読み込み";
+  }
+
+  // マイクの実際の権限状態（Permissions API）。非対応ブラウザでは "unknown"
+  let micPerm = "unknown";
+  if (navigator.permissions && navigator.permissions.query) {
+    navigator.permissions.query({ name: "microphone" }).then(st => {
+      micPerm = st.state;
+      renderDiagnostics();
+      st.onchange = () => { micPerm = st.state; renderDiagnostics(); };
+    }).catch(() => {});
+  }
+  const micPermLabel = () => ({
+    granted: "許可済み",
+    denied: "未許可（拒否されています）",
+    prompt: "未許可（録音時に確認されます）"
+  }[micPerm] || (HAS_GUM ? "不明（録音時に確認されます）" : "×（このブラウザは非対応）"));
+
   function renderDiagnostics() {
     const mark = ok => (ok ? "○" : "×");
     const rows = [
       ["ブラウザ", IN_APP ? "アプリ内ブラウザ" : "通常ブラウザ"],
       ["https 接続", mark(window.isSecureContext)],
-      ["マイク取得", mark(HAS_GUM)],
+      ["マイクの権限", micPermLabel()],
       ["録音方式", HAS_MR ? "MediaRecorder" : HAS_WEBAUDIO ? "WAV（互換モード）" : "×"],
       ["音声読み上げ", mark(HAS_TTS)],
       ["韓国語の読み上げ音声", HAS_TTS ? `${koVoices().length} 件` : "×"]
@@ -673,25 +709,43 @@
   });
 
   // ===== レッスンの流れ =====
-  // スタート画面 →（じっくり単語練習 →）会話練習（例文・録音・フィードバック）→ 関連単語クイズ → 採点表
+  // スタート画面 →（じっくり単語練習 →）会話練習（例文・録音・フィードバック）→ 関連単語クイズ（＋「まだ」の復習）→ 採点表
   const QUIZ_POINTS_PER_CORRECT = 2;
-  let quiz = null;          // { items: [{ko, ja, inSentence, options[]}], i, answers: [bool] }
+  let quiz = null;          // { items: [{ko, ja, kana, inSentence, review, options[]}], i, answers: [bool] }
   let wordIdx = 0;          // じっくり単語練習の現在位置
   let wordsStudied = false; // このレッスンで単語練習をしたか
   let wordsReturn = "sentence"; // 単語練習を終えた後の行き先
+  let revealed = new Set(); // 意味を表示したカード（このレッスン内）
 
   const shuffle = arr => {
     const a = arr.slice();
     for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; }
     return a;
   };
-  const tagLabel = w => (w.inSentence ? "例文の単語" : "関連する新しい単語");
-  const setTag = (node, w) => { node.textContent = tagLabel(w); node.classList.toggle("new", !w.inSentence); };
+  const tagLabel = w => (w.review ? "復習（まだ）" : w.inSentence ? "例文の単語" : "関連する新しい単語");
+  const setTag = (node, w) => {
+    node.textContent = tagLabel(w);
+    node.classList.toggle("new", !w.inSentence && !w.review);
+    node.classList.toggle("review", !!w.review);
+  };
+  const lessonNo = () => state.idx % window.SENTENCES.length;
+  const madaList = () => state.mada[lessonNo()] || [];
+  // 単語の例文：例文に出てくる単語はレッスンの例文、関連語は専用の例文
+  const exampleOf = w => (w.exKo ? { ko: w.exKo, ja: w.exJa } : { ko: current().ko, ja: current().ja });
+
+  // 単語の音声（ElevenLabs で生成した mp3）
+  const wordAudio = new Audio();
+  function playWord(w) {
+    wordAudio.pause();
+    wordAudio.src = w.audio;
+    const p = wordAudio.play();
+    if (p && p.catch) p.catch(() => toast("音声を再生できませんでした"));
+  }
 
   function showStep(step) {
     const practiceTab = document.querySelector('.tab[data-view="practice"]');
     if (!practiceTab.classList.contains("active")) practiceTab.click();
-    ["Start", "Words", "Sentence", "Quiz", "Score"].forEach(k => {
+    ["Start", "List", "Words", "Sentence", "Quiz", "Score"].forEach(k => {
       el[`step${k}`].hidden = step !== k.toLowerCase();
     });
     document.body.classList.toggle("focus", step === "quiz" || step === "words");
@@ -704,27 +758,54 @@
     const n = window.SENTENCES.length;
     const d = fromKey(today());
     el.startDate.textContent = `${d.getMonth() + 1}月${d.getDate()}日`;
-    el.startIndex.textContent = `${(state.idx % n) + 1} / ${n}`;
+    el.startIndex.textContent = `${lessonNo() + 1} / ${n}`;
     el.startKo.textContent = s.ko;
     el.startJa.textContent = s.ja;
     const st = streakStatus();
     el.startStreak.textContent = `🔥 連続 ${st.streak}日`;
     el.startDone.textContent = state.last === today() ? "✅ 今日の出席 完了" : "今日はまだ未出席";
+    // まだ1つもレッスンを終えていない人には「じっくり」をすすめる
+    el.startBadge.hidden = Object.keys(state.completed).length > 0;
     wordsStudied = false;
+    revealed = new Set();
     resetRecording();
     showStep("start");
   }
 
-  function nextLesson() {
-    state.idx = (state.idx + 1) % window.SENTENCES.length;
+  function selectLesson(i) {
+    state.idx = i;
     save();
     renderSentence();
     goStart();
   }
+  const nextLesson = () => selectLesson((lessonNo() + 1) % window.SENTENCES.length);
 
   el.btnStartWords.addEventListener("click", () => startWords("sentence"));
   el.btnStartTalk.addEventListener("click", goSentence);
   el.btnStartNext.addEventListener("click", nextLesson);
+
+  // ----- レッスン一覧 -----
+  function goList() {
+    el.lessonList.innerHTML = "";
+    window.SENTENCES.forEach((s, i) => {
+      const done = state.completed[i];
+      const li = document.createElement("li");
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "lesson-item" + (i === lessonNo() ? " current" : "");
+      b.innerHTML = `<span class="li-no"></span><span class="li-body"><b lang="ko"></b><small></small></span><span class="li-done"></span>`;
+      b.querySelector(".li-no").textContent = i + 1;
+      b.querySelector("b").textContent = s.ko.length > 14 ? s.ko.slice(0, 14) + "…" : s.ko;
+      b.querySelector("small").textContent = `${s.theme}　難易度 ${s.level}`;
+      b.querySelector(".li-done").textContent = done ? `✅ ${done.score}点` : "未完了";
+      b.addEventListener("click", () => selectLesson(i));
+      li.appendChild(b);
+      el.lessonList.appendChild(li);
+    });
+    showStep("list");
+  }
+  el.btnStartList.addEventListener("click", goList);
+  el.btnListBack.addEventListener("click", goStart);
 
   // ----- じっくり単語練習 -----
   function startWords(returnTo) {
@@ -740,30 +821,55 @@
     el.wordsBar.style.width = `${((wordIdx + 1) / words.length) * 100}%`;
     el.wordNo.textContent = `${wordIdx + 1} / ${words.length}`;
     el.wordKo.textContent = w.ko;
-    el.wordJa.textContent = w.ja;
-    el.wordJa.hidden = true;
-    el.wordHint.hidden = false;
     setTag(el.wordTag, w);
-    el.wordSentence.textContent = w.inSentence ? current().ko : "";
-    el.wordSentence.hidden = true;
+    el.wordKana.textContent = `（${w.kana}）`;
+    el.wordJa.textContent = w.ja;
+    const ex = exampleOf(w);
+    el.wordSentence.innerHTML = "<span lang=\"ko\"></span><small></small>";
+    el.wordSentence.firstChild.textContent = ex.ko;
+    el.wordSentence.lastChild.textContent = ex.ja;
+    const shown = revealed.has(w.ko);
+    el.wordBack.hidden = !shown;
+    el.btnReveal.hidden = shown;
+    el.rateRow.hidden = !shown;
+    const mada = madaList().includes(w.ko);
+    el.btnMada.classList.toggle("on", mada);
+    el.btnOboeta.classList.toggle("on", shown && !mada);
     el.btnWordPrev.disabled = wordIdx === 0;
-    el.btnWordNext.textContent = wordIdx === words.length - 1 ? "会話練習へ →" : "次へ →";
+    // 意味を一度表示するまで「次へ」は押せない
+    el.btnWordNext.disabled = !shown;
+    el.btnWordNext.textContent = wordIdx === words.length - 1
+      ? (wordsReturn === "talk" ? "会話練習に戻る →" : "会話練習へ →")
+      : "次へ →";
   }
 
-  el.wordCard.addEventListener("click", () => {
-    el.wordJa.hidden = false;
-    el.wordHint.hidden = true;
-    el.wordSentence.hidden = !current().words[wordIdx].inSentence;
+  el.btnReveal.addEventListener("click", () => {
+    revealed.add(current().words[wordIdx].ko);
+    renderWord();
   });
-  el.btnWordPrev.addEventListener("click", () => { if (wordIdx > 0) { wordIdx--; renderWord(); } });
-  el.btnWordNext.addEventListener("click", () => {
+  el.btnWordSpeak.addEventListener("click", () => playWord(current().words[wordIdx]));
+
+  function rateWord(isMada) {
+    const ko = current().words[wordIdx].ko;
+    const list = madaList().filter(k => k !== ko);
+    if (isMada) list.push(ko);
+    state.mada[lessonNo()] = list;
+    save();
+    goNextWord();
+  }
+  el.btnMada.addEventListener("click", () => rateWord(true));
+  el.btnOboeta.addEventListener("click", () => rateWord(false));
+
+  function goNextWord() {
     if (wordIdx < current().words.length - 1) { wordIdx++; renderWord(); return; }
     wordsStudied = true;
     goSentence();
-  });
+  }
+  el.btnWordPrev.addEventListener("click", () => { if (wordIdx > 0) { wordIdx--; renderWord(); } });
+  el.btnWordNext.addEventListener("click", () => { if (!el.btnWordNext.disabled) goNextWord(); });
   el.btnWordsClose.addEventListener("click", () => {
-    if (wordsReturn === "sentence" && el.resultCard.hidden && !wordsStudied) goStart();
-    else showStep("sentence");
+    if (wordsReturn === "talk") showStep("sentence");
+    else goStart();
   });
 
   // ----- 会話練習 -----
@@ -774,18 +880,25 @@
   el.btnWordsFromTalk.addEventListener("click", () => startWords("talk"));
   el.btnToQuiz.addEventListener("click", startQuiz);
 
-  // ----- 関連単語クイズ（例文の単語4語 ＋ 関連する新しい単語6語） -----
+  // ----- 関連単語クイズ（例文の単語4語 ＋ 関連する新しい単語6語 ＋「まだ」の復習） -----
+  function makeItem(w, words, review) {
+    return {
+      ko: w.ko, ja: w.ja, kana: w.kana, inSentence: !!w.inSentence, review, ex: exampleOf(w),
+      options: shuffle([w.ja, ...shuffle(words.filter(x => x.ja !== w.ja)).slice(0, 3).map(x => x.ja)])
+    };
+  }
+
   function startQuiz() {
     const words = current().words;
     // 例文の単語を先に、関連する新しい単語を後に出す（それぞれの中ではランダム）
     const ordered = [...shuffle(words.filter(w => w.inSentence)), ...shuffle(words.filter(w => !w.inSentence))];
-    const items = ordered.map(w => ({
-      ko: w.ko,
-      ja: w.ja,
-      inSentence: !!w.inSentence,
-      options: shuffle([w.ja, ...shuffle(words.filter(x => x.ja !== w.ja)).slice(0, 3).map(x => x.ja)])
-    }));
-    quiz = { items, i: 0, answers: [] };
+    const items = ordered.map(w => makeItem(w, words, false));
+    // 単語カードで「まだ」にした単語は、クイズの後にもう一度出す（採点には含めない）
+    madaList().forEach(ko => {
+      const w = words.find(x => x.ko === ko);
+      if (w) items.push(makeItem(w, words, true));
+    });
+    quiz = { items, i: 0, answers: [], main: ordered.length };
     showStep("quiz");
     renderQuestion();
   }
@@ -794,34 +907,53 @@
     const q = quiz.items[quiz.i];
     const n = quiz.items.length;
     el.quizBar.style.width = `${(quiz.i / n) * 100}%`;
-    el.quizNo.textContent = `${quiz.i + 1} / ${n}`;
+    el.quizNo.textContent = q.review ? `復習 ${quiz.i - quiz.main + 1} / ${n - quiz.main}` : `${quiz.i + 1} / ${quiz.main}`;
     el.quizWord.textContent = q.ko;
     setTag(el.quizTag, q);
+    el.quizFeedback.hidden = true;
     el.quizOptions.innerHTML = "";
     q.options.forEach((opt, k) => {
       const b = document.createElement("button");
       b.type = "button";
       b.className = "opt";
-      b.innerHTML = `<span class="num">${k + 1}</span><span class="opt-text"></span>`;
-      b.lastChild.textContent = opt;
+      b.innerHTML = `<span class="num">${k + 1}</span><span class="opt-text"></span><span class="opt-mark"></span>`;
+      b.querySelector(".opt-text").textContent = opt;
       b.addEventListener("click", () => answer(opt, b));
       el.quizOptions.appendChild(b);
     });
     el.btnSkip.disabled = false;
   }
 
+  // 回答したら文字で正誤を出し、正解と例文を見せる。「次へ」を押すまで進まない
   function answer(choice, btn) {
     const q = quiz.items[quiz.i];
+    if (quiz.answers[quiz.i] !== undefined) return;
     const ok = choice === q.ja;
-    if (ok) sfx.correct(); else sfx.wrong();
     quiz.answers[quiz.i] = ok;
+    if (ok) sfx.correct(); else sfx.wrong();
     el.btnSkip.disabled = true;
     el.quizOptions.querySelectorAll(".opt").forEach(b => {
       b.disabled = true;
-      if (b.lastChild.textContent === q.ja) b.classList.add("correct");
+      if (b.querySelector(".opt-text").textContent === q.ja) {
+        b.classList.add("correct");
+        b.querySelector(".opt-mark").textContent = "正解";
+      }
     });
-    if (btn && !ok) btn.classList.add("wrong");
-    setTimeout(nextQuestion, ok ? 600 : 1100);
+    if (btn && !ok) {
+      btn.classList.add("wrong");
+      btn.querySelector(".opt-mark").textContent = "あなたの回答";
+    }
+    el.qfTitle.textContent = ok ? "⭕ 正解！" : choice === null ? "スキップ（不正解）" : "❌ 不正解";
+    el.qfTitle.className = "qf-title " + (ok ? "ok" : "ng");
+    el.qfAnswer.innerHTML = "<b lang=\"ko\"></b><span></span>";
+    el.qfAnswer.firstChild.textContent = `${q.ko}（${q.kana}）`;
+    el.qfAnswer.lastChild.textContent = ` ＝ ${q.ja}`;
+    el.qfEx.innerHTML = "<span lang=\"ko\"></span><small></small>";
+    el.qfEx.firstChild.textContent = `例）${q.ex.ko}`;
+    el.qfEx.lastChild.textContent = q.ex.ja;
+    el.btnQuizNext.textContent = quiz.i === quiz.items.length - 1 ? "結果を見る →" : "次へ →";
+    el.quizFeedback.hidden = false;
+    el.quizFeedback.scrollIntoView({ behavior: "smooth", block: "nearest" });
   }
 
   function nextQuestion() {
@@ -831,16 +963,18 @@
   }
 
   el.btnSkip.addEventListener("click", () => answer(null, null));
-  el.btnQuizClose.addEventListener("click", () => {
-    if (!confirm("単語クイズを終了して採点しますか？（未回答は不正解になります）")) return;
-    finishQuiz();
-  });
+  el.btnQuizNext.addEventListener("click", nextQuestion);
+  // ✕：確認なしで、このレッスンのスタートに戻る（結果は記録しない）
+  el.btnQuizClose.addEventListener("click", () => { quiz = null; goStart(); });
 
   function finishQuiz() {
-    const n = quiz.items.length;
-    const correct = quiz.answers.filter(Boolean).length;
+    const n = quiz.main;
+    const correct = quiz.answers.slice(0, n).filter(Boolean).length;
     const score = Math.round((correct / n) * 100);
     const prev = state.lastQuizScore;
+    // 復習で正解した「まだ」単語はリストから外す
+    const reviewedOk = quiz.items.filter((q, k) => q.review && quiz.answers[k]).map(q => q.ko);
+    state.mada[lessonNo()] = madaList().filter(k => !reviewedOk.includes(k));
     // クイズのポイントは1日1回だけ
     let gained = 0;
     if (state.quizDate !== today()) {
@@ -849,6 +983,8 @@
       state.quizDate = today();
     }
     state.lastQuizScore = score;
+    const before = state.completed[lessonNo()];
+    state.completed[lessonNo()] = { date: today(), score: Math.max(score, before ? before.score : 0) };
     save();
     renderPoints();
     renderScoreSheet({ correct, n, score, prev, gained });
@@ -867,24 +1003,24 @@
     el.quizCorrect.textContent = correct;
     el.quizTotal.textContent = n;
     el.vocabScore.textContent = score;
-    const inS = quiz.items.map((q, k) => [q, quiz.answers[k]]);
-    const cIn = inS.filter(([q, ok]) => q.inSentence && ok).length;
-    const cNew = inS.filter(([q, ok]) => !q.inSentence && ok).length;
+    const main = quiz.items.slice(0, n).map((q, k) => [q, quiz.answers[k]]);
+    const cIn = main.filter(([q, ok]) => q.inSentence && ok).length;
+    const cNew = main.filter(([q, ok]) => !q.inSentence && ok).length;
     const parts = [`例文の単語 ${cIn}/4・新しい単語 ${cNew}/6`];
     if (prev != null) parts.push(`前回 ${prev}`);
     parts.push(gained ? `+${gained}pt` : "本日のpt獲得済み");
     el.scoreSub.textContent = parts.join("　/　");
     // 吹き出しは言語バランス設定に合わせて主言語を決め、もう一方を小さく添える
     const msg = coachMessage(score, prev);
-    const main = state.ratio === "ja6" ? "ja" : "ko";
-    const sub = main === "ja" ? "ko" : "ja";
+    const mainLang = state.ratio === "ja6" ? "ja" : "ko";
+    const sub = mainLang === "ja" ? "ko" : "ja";
     el.coachMsg.innerHTML = "<span></span><small></small>";
-    el.coachMsg.firstChild.textContent = msg[main];
-    el.coachMsg.firstChild.lang = main;
+    el.coachMsg.firstChild.textContent = msg[mainLang];
+    el.coachMsg.firstChild.lang = mainLang;
     el.coachMsg.lastChild.textContent = msg[sub];
     el.coachMsg.lastChild.lang = sub;
 
-    const wrong = quiz.items.filter((q, k) => !quiz.answers[k]);
+    const wrong = quiz.items.filter((q, k) => !q.review && !quiz.answers[k]);
     el.reviewCard.hidden = wrong.length === 0;
     el.reviewList.innerHTML = "";
     wrong.forEach(q => {
