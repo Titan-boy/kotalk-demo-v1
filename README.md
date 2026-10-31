@@ -70,6 +70,7 @@ index.html   画面（練習 / 出席 / 設定 の3タブ）
 style.css    スマホ向けスタイル（ダークモード対応）
 data.js      例文データ（5文、単語10語〔例文4＋関連6〕・発音ポイント・音声ファイル付き）
 audio/       お手本音声 mp3（ElevenLabs 生成、1.mp3〜5.mp3）
+audio/sfx/   効果音 mp3（ElevenLabs 生成：correct＝正解、wrong＝不正解、tick＝録音カウント）
 app.js       ロジック（録音・ダミー評価・出席・ポイント・言語バランス）
 ```
 

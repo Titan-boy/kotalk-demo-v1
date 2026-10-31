@@ -94,46 +94,51 @@
     return { already: false, usedRest, bonus, gained };
   }
 
-  // ===== 効果音（音声ファイルを使わず Web Audio で生成） =====
+  // ===== 効果音（ElevenLabs で生成した mp3：audio/sfx/） =====
+  // Web Audio は iPhone の消音スイッチで無音になるため、<audio> 要素で再生する。
+  // iOS は volume 指定が効かないので、音量はファイル側で小さめに調整済み。
   const sfx = (() => {
-    let ctx = null;
-    // iOS ではタップ操作の中で一度作成・再開しておく必要がある
+    const files = { correct: "audio/sfx/correct.mp3", wrong: "audio/sfx/wrong.mp3", tick: "audio/sfx/tick.mp3" };
+    const players = {};
+    Object.entries(files).forEach(([k, src]) => {
+      const a = new Audio(src);
+      a.preload = "auto";
+      players[k] = a;
+    });
+    let unlocked = false;
+    // iOS ではタップ操作の中で一度再生しておかないと、後からの再生（録音カウントなど）が許可されない
     function unlock() {
-      if (!ctx) {
-        const C = window.AudioContext || window.webkitAudioContext;
-        if (!C) return null;
-        ctx = new C();
-      }
-      if (ctx.state === "suspended") ctx.resume();
-      return ctx;
+      if (unlocked) return;
+      unlocked = true;
+      Object.values(players).forEach(a => {
+        a.muted = true;
+        const p = a.play();
+        // 本番の再生が先に始まっていたら止めない（muted のままなら解除用の再生）
+        const reset = () => { if (a.muted) { a.pause(); a.currentTime = 0; a.muted = false; } };
+        if (p && p.then) p.then(reset).catch(() => { a.muted = false; unlocked = false; });
+        else reset();
+      });
     }
-    function tone(freq, at, dur, type = "sine", vol = 0.1, endFreq = null) {
-      const c = unlock();
-      if (!c || !state.sfx) return;
-      const t = c.currentTime + at;
-      const o = c.createOscillator();
-      const g = c.createGain();
-      o.type = type;
-      o.frequency.setValueAtTime(freq, t);
-      if (endFreq) o.frequency.exponentialRampToValueAtTime(endFreq, t + dur);
-      g.gain.setValueAtTime(0.0001, t);
-      g.gain.exponentialRampToValueAtTime(vol, t + 0.01);
-      g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-      o.connect(g);
-      g.connect(c.destination);
-      o.start(t);
-      o.stop(t + dur + 0.05);
+    function play(k) {
+      if (!state.sfx) return;
+      const a = players[k];
+      try {
+        a.muted = false;
+        a.pause();
+        a.currentTime = 0;
+        const p = a.play();
+        if (p && p.catch) p.catch(() => {});
+      } catch (e) { /* 再生できない端末では何もしない */ }
     }
     return {
       unlock,
-      // 딩동댕：ド・ミ・ソの上昇チャイム
-      correct() { tone(1047, 0, 0.22, "sine", 0.09); tone(1319, 0.14, 0.22, "sine", 0.09); tone(1568, 0.28, 0.45, "sine", 0.09); },
-      // 띵-!：短く少し下がるブザー音
-      wrong() { tone(440, 0, 0.32, "triangle", 0.12, 392); },
-      // 録音の残り 3・2・1：ごく小さなクリック音（録音に入りにくいよう短く小さく）
-      tick() { tone(1200, 0, 0.05, "sine", 0.025); }
+      correct: () => play("correct"), // 딩동댕
+      wrong: () => play("wrong"),     // 띵-!
+      tick: () => play("tick")        // 録音の残り 3・2・1
     };
   })();
+  // 最初のタップで効果音を使えるようにしておく
+  document.addEventListener("pointerdown", () => sfx.unlock(), { once: true, capture: true });
 
   // ===== 発音評価（現在はダミー） =====
   async function evaluatePronunciation(audioBlob, sentence, durationSec) {
