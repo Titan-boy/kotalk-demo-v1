@@ -128,10 +128,14 @@
 
       <!-- 録音 -->
       <div class="card" id="recordCard">
-        <div class="card-label">声に出して読んでみましょう（最大10秒）</div>
+        <div class="card-label">声に出して読んでみましょう（7秒）</div>
         <button class="rec-btn" id="btnRec" type="button" aria-label="録音開始">
           <span class="rec-dot"></span>
         </button>
+        <div class="rec-timer" id="recTimer" hidden>
+          <div class="rec-timer-track"><i id="recTimerBar"></i></div>
+          <span class="rec-count" id="recCount" aria-live="polite"></span>
+        </div>
         <p class="rec-status" id="recStatus">マイクをタップして録音</p>
         <audio id="playback" controls hidden></audio>
         <button class="btn primary block" id="btnEvaluate" type="button" hidden>この録音で評価する</button>
@@ -213,6 +217,13 @@
         <label class="radio-card">
           <input type="radio" name="ratio" value="ja4">
           <span><strong>日本語 4 : 韓国語 6</strong><br><small>韓国語中心。韓国語で考える練習をしたい方に。</small></span>
+        </label>
+      </div>
+      <div class="card">
+        <div class="card-label">効果音</div>
+        <label class="switch-row">
+          <span>クイズの正解・不正解音、録音のカウント音</span>
+          <input type="checkbox" id="sfxToggle" checked>
         </label>
       </div>
       <div class="card">

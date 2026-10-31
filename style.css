@@ -281,3 +281,15 @@ body.focus { padding-bottom: env(safe-area-inset-bottom); }
 .step-ico { width: 54px; height: 54px; border-width: 4px; font-size: 22px; }
 .step span { font-size: 11px; }
 .score-sub { font-size: 13px; }
+
+/* ===== 録音タイマー ===== */
+.rec-timer { display: flex; align-items: center; gap: 10px; margin: 6px 4px 0; }
+.rec-timer-track { flex: 1; height: 6px; border-radius: 99px; background: var(--surface-2); overflow: hidden; }
+.rec-timer-track i { display: block; height: 100%; width: 100%; background: var(--accent); border-radius: 99px; transition: width .05s linear; }
+.rec-count { width: 14px; font-size: 13px; font-weight: 700; color: var(--muted); text-align: center; }
+.rec-count.pop { animation: count-pop .4s ease-out; }
+@keyframes count-pop { from { transform: scale(1.6); color: var(--text); } to { transform: scale(1); } }
+
+/* ===== 設定スイッチ ===== */
+.switch-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 14px; cursor: pointer; }
+.switch-row input { width: 22px; height: 22px; accent-color: var(--primary); }
