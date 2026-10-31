@@ -144,7 +144,12 @@
         </details>
         <div class="row">
           <button class="btn ghost" id="btnModel" type="button">🔊 お手本を聞く</button>
-          <button class="btn ghost" id="btnWordsFromTalk" type="button">📖 単語を確認</button>
+          <button class="btn ghost" id="btnExpl" type="button" aria-expanded="false" aria-controls="explBox">📝 表現を確認</button>
+        </div>
+        <div class="expl-box" id="explBox" hidden>
+          <p class="expl-summary" id="explSummary"></p>
+          <div class="expl-label">文法ポイント</div>
+          <dl class="expl-grammar" id="explGrammar"></dl>
         </div>
         <div class="help-box" id="ttsHelp" hidden></div>
       </div>

@@ -206,7 +206,7 @@
   const el = {
     pointsTop: $("pointsTop"),
     koSentence: $("koSentence"), jaTranslation: $("jaTranslation"), pronPoints: $("pronPoints"), sentenceIndex: $("sentenceIndex"),
-    btnModel: $("btnModel"), btnWordsFromTalk: $("btnWordsFromTalk"), btnToQuiz: $("btnToQuiz"),
+    btnModel: $("btnModel"), btnExpl: $("btnExpl"), explBox: $("explBox"), explSummary: $("explSummary"), explGrammar: $("explGrammar"), btnToQuiz: $("btnToQuiz"),
     btnRec: $("btnRec"), recStatus: $("recStatus"), playback: $("playback"),
     btnEvaluate: $("btnEvaluate"), btnNoMic: $("btnNoMic"),
     recordCard: $("recordCard"), resultCard: $("resultCard"),
@@ -768,6 +768,7 @@
     el.startBadge.hidden = Object.keys(state.completed).length > 0;
     wordsStudied = false;
     revealed = new Set();
+    setExpl(false);
     resetRecording();
     showStep("start");
   }
@@ -877,7 +878,27 @@
     showStep("sentence");
   }
   el.btnSentenceHome.addEventListener("click", goStart);
-  el.btnWordsFromTalk.addEventListener("click", () => startWords("talk"));
+  // 「表現を確認」：例文の意味と文法ポイントを日本語で表示（開閉）
+  function renderExpl() {
+    const e = current().expl;
+    el.explSummary.textContent = e.summary;
+    el.explGrammar.innerHTML = "";
+    e.grammar.forEach(g => {
+      const dt = document.createElement("dt");
+      dt.lang = "ko";
+      dt.textContent = g.form;
+      const dd = document.createElement("dd");
+      dd.textContent = g.ja;
+      el.explGrammar.append(dt, dd);
+    });
+  }
+  function setExpl(open) {
+    if (open) renderExpl();
+    el.explBox.hidden = !open;
+    el.btnExpl.setAttribute("aria-expanded", String(open));
+    el.btnExpl.textContent = open ? "📝 解説を閉じる" : "📝 表現を確認";
+  }
+  el.btnExpl.addEventListener("click", () => setExpl(el.explBox.hidden));
   el.btnToQuiz.addEventListener("click", startQuiz);
 
   // ----- 関連単語クイズ（例文の単語4語 ＋ 関連する新しい単語6語 ＋「まだ」の復習） -----

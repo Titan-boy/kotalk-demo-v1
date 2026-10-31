@@ -346,3 +346,12 @@ body.focus { padding-bottom: env(safe-area-inset-bottom); }
 .qf-ex { margin: 0; font-size: 14px; }
 .qf-ex small { display: block; color: var(--muted); }
 #stepQuiz .quiz-card { min-height: 30vh; }
+
+/* ===== 表現を確認 ===== */
+.expl-box { margin-top: 12px; padding: 14px; border-radius: 14px; background: var(--surface-2); }
+.expl-summary { margin: 0 0 12px; font-size: 14px; line-height: 1.7; }
+.expl-label { font-size: 12px; font-weight: 800; color: var(--primary); margin-bottom: 6px; }
+.expl-grammar { margin: 0; }
+.expl-grammar dt { font-weight: 800; font-size: 15px; margin-top: 10px; }
+.expl-grammar dt:first-child { margin-top: 0; }
+.expl-grammar dd { margin: 2px 0 0; font-size: 13px; line-height: 1.7; color: var(--text); opacity: .9; }
