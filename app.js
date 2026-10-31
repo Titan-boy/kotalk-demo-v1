@@ -6,7 +6,8 @@
   const STREAK_BONUS_EVERY = 7;
   const STREAK_BONUS = 30;
   const EXCHANGE_COST = 300;
-  const MAX_REC_SEC = 10;
+  const MAX_REC_SEC = 7;
+  const COUNTDOWN_FROM = 3; // 残り3秒から 3・2・1 を表示
   const STORAGE_KEY = "kotalk-demo-v1";
 
   // ===== 状態（デモのため localStorage に保存） =====
@@ -20,6 +21,7 @@
     restWeeks: [],       // 休息券を使った週（その週の月曜日）
     requests: [],        // 講師1:1フィードバック申請
     ratio: "ja6",
+    sfx: true,           // 効果音
     idx: 0,
     quizDate: null,      // 単語テストを最後に受けた日（ポイントは1日1回）
     lastQuizScore: null
@@ -91,6 +93,47 @@
     save();
     return { already: false, usedRest, bonus, gained };
   }
+
+  // ===== 効果音（音声ファイルを使わず Web Audio で生成） =====
+  const sfx = (() => {
+    let ctx = null;
+    // iOS ではタップ操作の中で一度作成・再開しておく必要がある
+    function unlock() {
+      if (!ctx) {
+        const C = window.AudioContext || window.webkitAudioContext;
+        if (!C) return null;
+        ctx = new C();
+      }
+      if (ctx.state === "suspended") ctx.resume();
+      return ctx;
+    }
+    function tone(freq, at, dur, type = "sine", vol = 0.1, endFreq = null) {
+      const c = unlock();
+      if (!c || !state.sfx) return;
+      const t = c.currentTime + at;
+      const o = c.createOscillator();
+      const g = c.createGain();
+      o.type = type;
+      o.frequency.setValueAtTime(freq, t);
+      if (endFreq) o.frequency.exponentialRampToValueAtTime(endFreq, t + dur);
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(vol, t + 0.01);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+      o.connect(g);
+      g.connect(c.destination);
+      o.start(t);
+      o.stop(t + dur + 0.05);
+    }
+    return {
+      unlock,
+      // 딩동댕：ド・ミ・ソの上昇チャイム
+      correct() { tone(1047, 0, 0.22, "sine", 0.09); tone(1319, 0.14, 0.22, "sine", 0.09); tone(1568, 0.28, 0.45, "sine", 0.09); },
+      // 띵-!：短く少し下がるブザー音
+      wrong() { tone(440, 0, 0.32, "triangle", 0.12, 392); },
+      // 録音の残り 3・2・1：ごく小さなクリック音（録音に入りにくいよう短く小さく）
+      tick() { tone(1200, 0, 0.05, "sine", 0.025); }
+    };
+  })();
 
   // ===== 発音評価（現在はダミー） =====
   async function evaluatePronunciation(audioBlob, sentence, durationSec) {
@@ -170,6 +213,7 @@
     toast: $("toast"),
     inAppBanner: $("inAppBanner"), btnCopyUrl: $("btnCopyUrl"), ttsHelp: $("ttsHelp"),
     diag: $("diag"), diagUa: $("diagUa"),
+    recTimer: $("recTimer"), recTimerBar: $("recTimerBar"), recCount: $("recCount"), sfxToggle: $("sfxToggle"),
     stepStart: $("stepStart"), stepWords: $("stepWords"),
     stepQuiz: $("stepQuiz"), stepScore: $("stepScore"), stepSentence: $("stepSentence"),
     startDate: $("startDate"), startIndex: $("startIndex"), startKo: $("startKo"), startJa: $("startJa"),
@@ -372,7 +416,8 @@
     const r = rec;
     rec = null;
     clearInterval(recTimer);
-    recDuration = (Date.now() - recStart) / 1000;
+    el.recTimer.hidden = true;
+    recDuration = Math.min(MAX_REC_SEC, (Date.now() - recStart) / 1000);
     recBlob = await r.stop();
     stream.getTracks().forEach(t => t.stop());
     el.playback.src = URL.createObjectURL(recBlob);
@@ -386,6 +431,7 @@
   el.btnRec.addEventListener("click", async () => {
     if (!canRecord) { toast(noRecordReason()); return; }
     if (rec) { stopRecording(); return; }
+    sfx.unlock();
     try {
       stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     } catch (e) {
@@ -407,11 +453,26 @@
     el.btnRec.setAttribute("aria-label", "録音停止");
     el.playback.hidden = true;
     el.btnEvaluate.hidden = true;
+    // 残り時間のバーが減っていき、最後の3秒だけ小さな数字と小さな音で知らせる
+    let lastCount = null;
+    el.recTimer.hidden = false;
+    el.recTimerBar.style.width = "100%";
+    el.recCount.textContent = "";
+    el.recStatus.textContent = "録音中…（タップで停止）";
     recTimer = setInterval(() => {
-      const sec = (Date.now() - recStart) / 1000;
-      el.recStatus.textContent = `録音中… ${sec.toFixed(1)}秒（タップで停止）`;
-      if (sec >= MAX_REC_SEC) stopRecording();
-    }, 100);
+      const left = Math.max(0, MAX_REC_SEC - (Date.now() - recStart) / 1000);
+      el.recTimerBar.style.width = `${(left / MAX_REC_SEC) * 100}%`;
+      const count = Math.ceil(left);
+      if (count <= COUNTDOWN_FROM && count > 0 && count !== lastCount) {
+        lastCount = count;
+        el.recCount.textContent = count;
+        el.recCount.classList.remove("pop");
+        void el.recCount.offsetWidth;
+        el.recCount.classList.add("pop");
+        sfx.tick();
+      }
+      if (left <= 0) stopRecording();
+    }, 50);
   });
 
   // ===== 対応状況の表示（設定タブ） =====
@@ -588,7 +649,14 @@
   });
 
   // ===== 設定 =====
+  el.sfxToggle.addEventListener("change", () => {
+    state.sfx = el.sfxToggle.checked;
+    save();
+    if (state.sfx) { sfx.unlock(); sfx.correct(); }
+  });
+
   function syncRatio() {
+    el.sfxToggle.checked = state.sfx !== false;
     document.querySelectorAll('input[name="ratio"]').forEach(r => { r.checked = r.value === state.ratio; });
   }
   document.querySelectorAll('input[name="ratio"]').forEach(r => {
@@ -740,6 +808,7 @@
   function answer(choice, btn) {
     const q = quiz.items[quiz.i];
     const ok = choice === q.ja;
+    if (ok) sfx.correct(); else sfx.wrong();
     quiz.answers[quiz.i] = ok;
     el.btnSkip.disabled = true;
     el.quizOptions.querySelectorAll(".opt").forEach(b => {
