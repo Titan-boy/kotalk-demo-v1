@@ -492,3 +492,8 @@ body:not(.focus) .composer { display: none; }
 .demo-banner { background: #fff1ee; }
 .toast { background: var(--navy); color: #fff; }
 .help-box, .inapp-banner { color: var(--text); }
+
+/* 録音での返事 */
+.b-voice { display: inline-block; margin-bottom: 6px; border: 0; border-radius: 999px; padding: 6px 14px; font: inherit; font-size: 13px; cursor: pointer; background: rgba(255, 255, 255, .18); color: inherit; }
+.sum-replies .b-voice { background: var(--surface-2); color: var(--navy); margin: 4px 0 0; align-self: flex-start; }
+.icon-btn.mic.on { animation: pulse 1.2s infinite; }

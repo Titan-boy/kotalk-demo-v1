@@ -854,6 +854,7 @@
   const understood = (text, kw) => kw.some(k => norm(text).includes(norm(k)));
 
   function startTalk(id) {
+    if (talkRec) stopTalkRec(true);
     const th = themeById(id);
     talk = { theme: th, i: 0, tries: 0, sec: 0, ok: 0, replies: [], done: false, finished: false };
     el.talkTitle.textContent = th.title;
@@ -944,18 +945,54 @@
     if (!talk || talk.finished) return;
     const text = el.talkInput.value.trim();
     if (!text) return;
-    const th = talk.theme;
-    const turn = th.turns[talk.i];
     el.talkInput.value = "";
     el.btnTalkSend.disabled = true;
-    const ok = hasHangul(text) && understood(text, turn.kw);
+    handleReply(text, null);
+  }
+
+  // 返事の処理（文字入力・録音の共通）
+  //   text: 入力した文、または録音の文字起こし（取れなかったときは空）
+  //   audioUrl: 録音した返事（文字入力のときは null）
+  function handleReply(text, audioUrl) {
+    const turn = talk.theme.turns[talk.i];
+    const judged = !!text;
+    const ok = judged && hasHangul(text) && understood(text, turn.kw);
     addBubble("me", div => {
-      div.innerHTML = "<p class=\"b-ko\" lang=\"ko\"></p><span class=\"b-mark\"></span>";
-      div.firstChild.textContent = text;
-      div.lastChild.textContent = ok ? "✓ 通じました" : "💡 もう少し";
+      if (audioUrl) {
+        const play = document.createElement("button");
+        play.type = "button";
+        play.className = "b-voice";
+        play.textContent = "▶ 自分の声を聞く";
+        const a = new Audio(audioUrl);
+        play.addEventListener("click", () => { a.currentTime = 0; a.play().catch(() => {}); });
+        div.appendChild(play);
+      }
+      if (text) {
+        const p = document.createElement("p");
+        p.className = "b-ko";
+        p.lang = "ko";
+        p.textContent = text;
+        div.appendChild(p);
+      }
+      const mark = document.createElement("span");
+      mark.className = "b-mark";
+      mark.textContent = !judged ? "🎙️ 録音で返事しました" : ok ? "✓ 通じました" : "💡 もう少し";
+      div.appendChild(mark);
       div.classList.toggle("ok", ok);
+      div.classList.toggle("voice", !!audioUrl);
     });
-    talk.replies.push({ ko: text, ok, hint: turn.hint.ko, turn: talk.i });
+    talk.replies.push({ ko: text, ok: judged ? ok : null, hint: turn.hint.ko, turn: talk.i, audio: audioUrl });
+
+    // 文字起こしができない端末では内容を判定できないので、参考の答えを見せて先に進む
+    if (!judged) {
+      addBubble("system", div => {
+        div.innerHTML = "<p class=\"b-note\">この端末では音声の文字起こしができないため、内容は判定していません。</p><p class=\"b-ja\"></p><p class=\"b-ko\" lang=\"ko\"></p>";
+        div.querySelector(".b-ja").textContent = "参考の答えと聞き比べてみましょう。";
+        div.querySelector(".b-ko").textContent = `例）${turn.hint.ko}`;
+      });
+      nextTurn();
+      return;
+    }
     if (ok) {
       sfx.correct();
       talk.ok++;
@@ -1005,36 +1042,97 @@
   });
   el.btnTalkEnd.addEventListener("click", finishTalk);
 
-  // 音声入力（ブラウザの音声認識。非対応の端末ではキーボードの音声入力を案内）
+  // ----- マイク：声で返事を録音して送る -----
+  // タップで録音開始、もう一度タップ（または15秒）で送信。
+  // 対応端末では同時にブラウザの音声認識で文字起こしし、その文で「通じたか」を判定する。
+  // TODO(API): 本番では録音データを音声認識API（サーバー経由）に送り、どの端末でも判定できるようにする
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-  let sr = null;
-  el.btnTalkMic.addEventListener("click", () => {
-    if (!SR) {
-      el.micStatus.textContent = "この端末は音声入力に未対応です。キーボードのマイクをお使いください";
+  const TALK_MAX_SEC = 15;
+  let talkRec = null; // { rec, stream, start, timer, sr, transcript }
+
+  function resetTalkMic() {
+    el.btnTalkMic.classList.remove("on");
+    el.btnTalkMic.textContent = "🎤";
+    el.btnTalkMic.setAttribute("aria-label", "声で返事を録音");
+  }
+
+  el.btnTalkMic.addEventListener("click", async () => {
+    if (!talk || talk.finished) return;
+    if (talkRec) { stopTalkRec(); return; }
+    if (!canRecord) { el.micStatus.textContent = noRecordReason(); return; }
+    sfx.unlock();
+    partnerAudio.pause();
+    let stream;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      if (micPerm !== "granted") { micPerm = "granted"; renderDiagnostics(); }
+    } catch (e) {
+      const noDevice = e && (e.name === "NotFoundError" || e.name === "OverconstrainedError");
+      if (!noDevice) micPerm = "denied";
+      renderDiagnostics();
+      el.micStatus.textContent = noDevice ? "マイクが見つかりませんでした" : `マイクが許可されていません。${micHowTo()}`;
       return;
     }
-    if (sr) { sr.stop(); return; }
-    sr = new SR();
-    sr.lang = "ko-KR";
-    sr.interimResults = true;
-    sr.onresult = e => {
-      el.talkInput.value = Array.from(e.results).map(r => r[0].transcript).join("");
-      el.btnTalkSend.disabled = !el.talkInput.value.trim();
-    };
-    sr.onerror = e => {
-      el.micStatus.textContent = e.error === "not-allowed" ? `マイクが許可されていません。${micHowTo()}` : "うまく聞き取れませんでした";
-    };
-    sr.onend = () => { sr = null; el.btnTalkMic.classList.remove("on"); if (el.micStatus.textContent === "聞いています…") el.micStatus.textContent = ""; };
+    let r = null;
+    try {
+      r = HAS_MR ? startMediaRecorder(stream) : startWavRecorder(stream);
+    } catch (e) {
+      try { r = HAS_WEBAUDIO ? startWavRecorder(stream) : null; } catch (e2) { r = null; }
+    }
+    if (!r) {
+      stream.getTracks().forEach(t => t.stop());
+      el.micStatus.textContent = "録音を開始できませんでした";
+      return;
+    }
+    const tr = { rec: r, stream, start: Date.now(), transcript: "", sr: null };
+    talkRec = tr;
+    // 文字起こし（対応端末のみ。失敗しても録音はそのまま続ける）
+    if (SR) {
+      try {
+        const s = new SR();
+        s.lang = "ko-KR";
+        s.interimResults = true;
+        s.continuous = true;
+        s.onresult = e => { tr.transcript = Array.from(e.results).map(x => x[0].transcript).join(""); };
+        s.onerror = () => {};
+        s.start();
+        tr.sr = s;
+      } catch (e) { tr.sr = null; }
+    }
     el.btnTalkMic.classList.add("on");
-    el.micStatus.textContent = "聞いています…";
-    sr.start();
+    el.btnTalkMic.textContent = "■";
+    el.btnTalkMic.setAttribute("aria-label", "録音を止めて送る");
+    tr.timer = setInterval(() => {
+      const sec = (Date.now() - tr.start) / 1000;
+      el.micStatus.textContent = `🔴 録音中 ${sec.toFixed(1)}秒　もう一度タップで送信`;
+      if (sec >= TALK_MAX_SEC) stopTalkRec();
+    }, 100);
   });
+
+  async function stopTalkRec(cancel) {
+    const tr = talkRec;
+    if (!tr) return;
+    talkRec = null;
+    clearInterval(tr.timer);
+    resetTalkMic();
+    const dur = (Date.now() - tr.start) / 1000;
+    const blob = await tr.rec.stop();
+    tr.stream.getTracks().forEach(t => t.stop());
+    if (tr.sr) {
+      try { tr.sr.stop(); } catch (e) {}
+      await new Promise(res => setTimeout(res, 500)); // 最後の文字起こしを待つ
+    }
+    el.micStatus.textContent = "";
+    if (cancel || !talk || talk.finished) return;
+    if (dur < 0.6) { el.micStatus.textContent = "短すぎました。もう一度どうぞ"; return; }
+    handleReply(tr.transcript.trim(), URL.createObjectURL(blob));
+  }
 
   function finishTalk() {
     if (!talk || talk.done) return;
     talk.done = true;
     partnerAudio.pause();
-    if (sr) sr.stop();
+    if (talkRec) stopTalkRec(true);
     const th = talk.theme;
     if (talk.sec > 0 || talk.replies.length) {
       state.sessions.unshift({ theme: th.id, date: today(), sec: talk.sec, ok: talk.ok, turns: talk.replies.length });
@@ -1075,11 +1173,20 @@
     }
     talk.replies.forEach(r => {
       const li = document.createElement("li");
-      li.className = r.ok ? "ok" : "ng";
+      li.className = r.ok ? "ok" : r.ok === null ? "voice" : "ng";
       li.innerHTML = "<span class=\"sr-mark\"></span><span class=\"sr-body\"><b lang=\"ko\"></b><small lang=\"ko\"></small></span>";
-      li.querySelector(".sr-mark").textContent = r.ok ? "✓" : "💡";
-      li.querySelector("b").textContent = r.ko;
+      li.querySelector(".sr-mark").textContent = r.ok ? "✓" : r.ok === null ? "🎙️" : "💡";
+      li.querySelector("b").textContent = r.ko || "（録音の返事）";
       li.querySelector("small").textContent = r.ok ? "" : `例）${r.hint}`;
+      if (r.audio) {
+        const play = document.createElement("button");
+        play.type = "button";
+        play.className = "b-voice";
+        play.textContent = "▶ 聞く";
+        const a = new Audio(r.audio);
+        play.addEventListener("click", () => { a.currentTime = 0; a.play().catch(() => {}); });
+        li.querySelector(".sr-body").appendChild(play);
+      }
       el.sumReplies.appendChild(li);
     });
     const hasLesson = th.lesson != null;
