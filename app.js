@@ -855,6 +855,16 @@
   const norm = t => t.replace(/[\s.,!?~。、！？…'"「」]/g, "");
   const hasHangul = t => /[가-힣]/.test(t);
   const understood = (text, kw) => kw.some(k => norm(text).includes(norm(k)));
+  // 韓国語として返事になっているか（ハングル2文字以上で、自然な文末で終わる）
+  //   例：이번 주말에 집에 가요 / 네 / 아니요 / 몰라요 → OK、질문をそのまま写しただけ → NG
+  const hangulCount = t => (t.match(/[\uac00-\ud7a3]/g) || []).length;
+  const ENDING = /(요|다|까|죠|네|지|니다|세요|래|게|자|어|아|야|요\?)$/;
+  function naturalReply(text, turn) {
+    const n = norm(text);
+    if (hangulCount(text) < 2 && !/^(네|예|응)$/.test(n)) return false;
+    if (n === norm(turn.ko)) return false;
+    return ENDING.test(n) || /^(네|예|응|아니요|아뇨)/.test(n);
+  }
 
   function startTalk(id) {
     if (talkRec) stopTalkRec(true);
@@ -959,7 +969,9 @@
   function handleReply(text, audioUrl) {
     const turn = talk.theme.turns[talk.i];
     const judged = !!text;
-    const ok = judged && hasHangul(text) && understood(text, turn.kw);
+    // キーワードが入っていれば「ぴったり」、入っていなくても自然な韓国語の返事なら「通じた」
+    const exact = judged && hasHangul(text) && understood(text, turn.kw);
+    const ok = exact || (judged && hasHangul(text) && !turn.require && naturalReply(text, turn));
     addBubble("me", div => {
       if (audioUrl) {
         const play = document.createElement("button");
@@ -999,6 +1011,12 @@
     if (ok) {
       sfx.correct();
       talk.ok++;
+      if (!exact) {
+        addBubble("system tip", div => {
+          div.innerHTML = "<p class=\"b-ja\">💬 こんな言い方もできます</p><p class=\"b-ko\" lang=\"ko\"></p>";
+          div.querySelector(".b-ko").textContent = turn.hint.ko;
+        });
+      }
       nextTurn();
       return;
     }
@@ -1009,7 +1027,9 @@
       showHint(turn, "この言い方も覚えておきましょう。会話は先に進みます。");
       nextTurn();
     } else {
-      showHint(turn, "相手にうまく伝わらなかったようです。ヒントを見てもう一度どうぞ。");
+      showHint(turn, turn.require && naturalReply(text, turn)
+        ? "韓国語としては通じますが、この場面では今日の表現を使ってみましょう。"
+        : "相手にうまく伝わらなかったようです。ヒントを見てもう一度どうぞ。");
     }
   }
 
