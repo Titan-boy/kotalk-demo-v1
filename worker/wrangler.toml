@@ -1,5 +1,7 @@
-# KoTalk の会話判定を Claude API に中継する Cloudflare Worker
-# APIキーはここに書かず、`npx wrangler secret put ANTHROPIC_API_KEY` で登録する
+# KoTalk の会話判定・学習記録を扱う Cloudflare Worker
+# 秘密の値はここに書かず、次のコマンドで登録する
+#   npx wrangler secret put ANTHROPIC_API_KEY   （Claude API キー）
+#   npx wrangler secret put EXPORT_KEY          （教員が CSV を書き出すときの合言葉。長い乱数にする）
 name = "kotalk-judge"
 main = "src/index.js"
 compatibility_date = "2026-10-01"
@@ -8,3 +10,15 @@ compatibility_flags = ["nodejs_compat"]
 [vars]
 # この URL から開いたページだけが使える（カンマ区切りで複数可）
 ALLOWED_ORIGINS = "https://titan-boy.github.io,http://localhost:8000,http://localhost:8765"
+# 記録を受け付けるクラスコードと、その対象（student＝東北大学の学生 / general＝TOFA の一般受講生）
+#   例: "TU-KR2026A:student,TOFA-K1:general"（コードは英数字とハイフン、カンマ区切り）
+# 空なら記録は保存しない
+CLASS_CODES = ""
+
+# 学習記録の保存先（Cloudflare D1）
+# `npx wrangler d1 create kotalk-records` で表示された database_id に置き換える
+[[d1_databases]]
+binding = "DB"
+database_name = "kotalk-records"
+database_id = "REPLACE_WITH_DATABASE_ID"
+migrations_dir = "migrations"
