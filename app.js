@@ -726,6 +726,9 @@
     return t && t.turns ? t.turns[n] : null;
   };
   const branchAudio = (th, n, id) => (BR.audio ? `audio/talk/b/${th.id}-${n}-${id}.mp3` : null);
+  // 相手が話を戻す質問をしたターン（「네」「아니요」への答えを受け付ける）
+  const redirectedAt = n => !!(talk && talk.redirected && talk.redirected[n]);
+  const markRedirected = n => { if (talk) { talk.redirected = talk.redirected || {}; talk.redirected[n] = true; } };
   const unclearLine = th => (BR.themes[th.id] && BR.themes[th.id].unclear) || null;
   const unclearAudio = th => (BR.audio ? `audio/talk/b/${th.id}-unclear.mp3` : null);
 
@@ -760,21 +763,22 @@
     return -1;
   }
   // どの分かれ道に当たるか（当たらなければ null。決まった流れのキーワードが優先される場合も null）
-  function matchBranch(th, n, text) {
+  function matchBranch(th, n, text, redirected) {
     const tb = branchTurn(th, n);
     if (!tb) return null;
+    const usable = tb.branches.filter(b => !b.afterRedirect || redirected);
     const turn = th.turns[n];
     const t = norm(text).toLowerCase();
     const best = fuzzy => {
       for (const weakPass of [false, true]) {
         let hit = null, len = 0, at = -1;
-        tb.branches.filter(b => !!b.weak === weakPass).forEach(b => b.kw.forEach(k => {
+        usable.filter(b => !!b.weak === weakPass).forEach(b => b.kw.forEach(k => {
           const kk = norm(k).toLowerCase();
           if (kk.length <= len) return;
           const i = kwFind(t, kk, fuzzy);
           if (i !== -1) { hit = b; len = kk.length; at = i; }
         }));
-        if (hit) return { b: hit, at, len };
+        if (hit) return { b: hit, at, len, weak: weakPass };
       }
       return null;
     };
@@ -786,6 +790,9 @@
     }).filter(Boolean);
     const mainExact = mainSpans.length > 0;
     const exact = best(false);
+    // 「좋아요」「네」などの一般的な返事は、決まった流れのキーワード（時刻など）があればそちらを優先
+    // （相手が話を戻す質問をしたあとの「네」「아니요」への答えは別。そのための分かれ道なので優先する）
+    if (exact && exact.weak && mainExact && !exact.b.afterRedirect) return null;
     if (exact) {
       // require のターン：話を戻す分かれ道の語が、決まった流れの語の一部（「명동역」の「역」）なら決まった流れ。
       // 別の場所を聞いている（「명동역 근처 약국」の「약국」）なら、そちらに答える
@@ -1271,7 +1278,7 @@
 
     // 分かれ道：予想した返事なら、相手がそれに合わせて答える（AI は使わない）
     if (hasHangul(text)) {
-      const b = matchBranch(talk.theme, turnNo, text);
+      const b = matchBranch(talk.theme, turnNo, text, redirectedAt(turnNo));
       if (b) { handleBranch(b, turn, turnNo, text, voice, audioUrl, mark, bubble); return; }
     }
 
@@ -1342,7 +1349,7 @@
     const natural = naturalReply(text, turn);
     if (natural && turn.require) {
       // 決まった流れから外れた返事：相手が話を戻す（2回目は日本語で前提を説明）
-      if (talk.tries === 1 && tb && tb.fallback) partnerSpeak(tb.fallback, branchAudio(talk.theme, turnNo, "fallback"));
+      if (talk.tries === 1 && tb && tb.fallback) { partnerSpeak(tb.fallback, branchAudio(talk.theme, turnNo, "fallback")); markRedirected(turnNo); }
       else showHint(turn, turn.requireNote || "韓国語としては通じますが、この場面では今日の表現を使ってみましょう。");
       return;
     }
@@ -1353,8 +1360,8 @@
   }
 
   // 動作確認用（ブラウザのコンソールや自動テストから、分かれ道の当たり方を確かめる）
-  window.KOTALK_DEBUG = { matchBranch: (themeId, n, text) => {
-    const b = matchBranch(THEMES.find(t => t.id === themeId), n, text);
+  window.KOTALK_DEBUG = { matchBranch: (themeId, n, text, redirected) => {
+    const b = matchBranch(THEMES.find(t => t.id === themeId), n, text, !!redirected);
     return b ? b.id : null;
   } };
 
@@ -1365,7 +1372,7 @@
     bubble.classList.toggle("ok", ok);
     talk.replies.push({ ko: text, ok, hint: turn.hint.ko, turn: turnNo, audio: audioUrl, branch: b.id });
     logReply(turn, turnNo, talk.tries + 1, text, voice, ok ? "ok" : "almost", "branch", null, b.id);
-    const src = branchAudio(talk.theme, turnNo, b.id);
+    const src = branchAudio(talk.theme, turnNo, b.audio || b.id);
     if (ok) {
       sfx.correct();
       talk.ok++;
@@ -1381,6 +1388,7 @@
     }
     // 話題がそれた返事：相手が答えたうえで、学習の範囲に話を戻す（同じターンにとどまる）
     talk.tries++;
+    markRedirected(turnNo);
     if (b.reply) partnerSpeak(b.reply, src);
     if (talk.tries >= 3) {
       showHint(turn, "この場面で練習したい言い方です。会話は先に進みます。");
