@@ -267,6 +267,110 @@
       </div>
     </section>
 
+    <!-- ===== 学習記録の登録（学生用・一般用） ===== -->
+    <section id="view-consent" class="view" aria-labelledby="h-consent">
+      <div class="step-head"><h1 id="h-consent" class="serif-h">学習記録</h1><button class="btn link" id="btnConsentBack" type="button">← 戻る</button></div>
+
+      <div class="card" id="recStatusCard" hidden>
+        <div class="card-label">登録の状態</div>
+        <p id="recStatusText"></p>
+        <button class="btn ghost danger block" id="btnRecDelete" type="button">登録を解除して、記録をすべて削除する</button>
+      </div>
+
+      <form class="card consent-form" id="consentForm" novalidate>
+        <p class="lead" id="consentLead">練習の記録を先生・講師と共有するための登録です。登録しなくてもアプリはすべて使えます。</p>
+
+        <fieldset class="field">
+          <legend>あなたの区分</legend>
+          <label class="radio-card"><input type="radio" name="learnerType" value="student"><span><strong>東北大学の学生</strong><br><small>授業で使う方</small></span></label>
+          <label class="radio-card"><input type="radio" name="learnerType" value="general"><span><strong>TOFA の受講生（一般）</strong><br><small>TOFA の講座で使う方</small></span></label>
+        </fieldset>
+
+        <div id="consentBody" hidden>
+          <label class="field"><span>クラスコード（先生・講師から聞いたコード）</span>
+            <input id="recClass" type="text" autocomplete="off" autocapitalize="characters" maxlength="32" placeholder="例）TU-KR2026A">
+          </label>
+          <label class="field"><span id="recIdLabel">学籍番号</span>
+            <input id="recId" type="text" autocomplete="off" maxlength="30">
+            <small class="hint" id="recIdHint"></small>
+          </label>
+
+          <div id="profileFields" hidden>
+            <p class="hint">研究・講座の改善のための質問です。答えたくない項目は「回答しない」を選んでください。</p>
+            <label class="field"><span>性別</span>
+              <select id="pfGender"><option value="">選んでください</option><option value="female">女性</option><option value="male">男性</option><option value="other">その他</option><option value="no_answer">回答しない</option></select>
+            </label>
+            <label class="field"><span>年代</span>
+              <select id="pfAge"><option value="">選んでください</option><option value="10s">10代</option><option value="20s">20代</option><option value="30s">30代</option><option value="40s">40代</option><option value="50s">50代</option><option value="60s">60代</option><option value="70s+">70代以上</option><option value="no_answer">回答しない</option></select>
+            </label>
+            <label class="field"><span>韓国語の学習歴</span>
+              <select id="pfExp"><option value="">選んでください</option><option value="lt6m">半年未満</option><option value="6m-1y">半年〜1年</option><option value="1-3y">1〜3年</option><option value="3-5y">3〜5年</option><option value="5y+">5年以上</option><option value="no_answer">回答しない</option></select>
+            </label>
+            <label class="field"><span>お住まいの地域</span>
+              <select id="pfRegion"><option value="">選んでください</option>
+            <option value="北海道">北海道</option>
+            <option value="青森県">青森県</option>
+            <option value="岩手県">岩手県</option>
+            <option value="宮城県">宮城県</option>
+            <option value="秋田県">秋田県</option>
+            <option value="山形県">山形県</option>
+            <option value="福島県">福島県</option>
+            <option value="茨城県">茨城県</option>
+            <option value="栃木県">栃木県</option>
+            <option value="群馬県">群馬県</option>
+            <option value="埼玉県">埼玉県</option>
+            <option value="千葉県">千葉県</option>
+            <option value="東京都">東京都</option>
+            <option value="神奈川県">神奈川県</option>
+            <option value="新潟県">新潟県</option>
+            <option value="富山県">富山県</option>
+            <option value="石川県">石川県</option>
+            <option value="福井県">福井県</option>
+            <option value="山梨県">山梨県</option>
+            <option value="長野県">長野県</option>
+            <option value="岐阜県">岐阜県</option>
+            <option value="静岡県">静岡県</option>
+            <option value="愛知県">愛知県</option>
+            <option value="三重県">三重県</option>
+            <option value="滋賀県">滋賀県</option>
+            <option value="京都府">京都府</option>
+            <option value="大阪府">大阪府</option>
+            <option value="兵庫県">兵庫県</option>
+            <option value="奈良県">奈良県</option>
+            <option value="和歌山県">和歌山県</option>
+            <option value="鳥取県">鳥取県</option>
+            <option value="島根県">島根県</option>
+            <option value="岡山県">岡山県</option>
+            <option value="広島県">広島県</option>
+            <option value="山口県">山口県</option>
+            <option value="徳島県">徳島県</option>
+            <option value="香川県">香川県</option>
+            <option value="愛媛県">愛媛県</option>
+            <option value="高知県">高知県</option>
+            <option value="福岡県">福岡県</option>
+            <option value="佐賀県">佐賀県</option>
+            <option value="長崎県">長崎県</option>
+            <option value="熊本県">熊本県</option>
+            <option value="大分県">大分県</option>
+            <option value="宮崎県">宮崎県</option>
+            <option value="鹿児島県">鹿児島県</option>
+            <option value="沖縄県">沖縄県</option>
+            <option value="海外">海外</option>
+            <option value="回答しない">回答しない</option></select>
+            </label>
+          </div>
+
+          <div class="consent-text" id="consentText"></div>
+
+          <label class="check-row strong"><input type="checkbox" id="recAgree"> 上の内容を読み、学習記録の保存に同意します（必須）</label>
+          <label class="check-row"><input type="checkbox" id="recResearch"> <span id="recResearchLabel">研究での利用にも同意します（任意）</span></label>
+          <p class="form-error" id="recError" role="alert"></p>
+          <button class="btn cta block" id="btnRecSubmit" type="submit">登録する</button>
+        </div>
+        <button class="btn link block" id="btnRecSkip" type="button">登録しないで使う</button>
+      </form>
+    </section>
+
     <!-- ===== 設定 ===== -->
     <section id="view-settings" class="view" aria-labelledby="h-settings">
       <div class="step-head"><h1 id="h-settings" class="serif-h">設定</h1><button class="btn link" id="btnSettingsBack" type="button">← 戻る</button></div>
@@ -289,6 +393,11 @@
           <input type="radio" name="ratio" value="ja4">
           <span><strong>日本語 4 : 韓国語 6</strong><br><small>韓国語中心。韓国語で考える練習をしたい方に。</small></span>
         </label>
+      </div>
+      <div class="card" id="recSettingsCard" hidden>
+        <div class="card-label">学習記録</div>
+        <p class="hint" id="recSettingsText"></p>
+        <button class="btn ghost" id="btnRecOpen" type="button">学習記録の登録・変更</button>
       </div>
       <div class="card">
         <div class="card-label">AI判定</div>
@@ -315,7 +424,7 @@
       <div class="card">
         <div class="card-label">このデモについて</div>
         <p class="hint">バージョン：<b id="appVersion">__VERSION__</b>（画面が古いときは、この表示が最新の更新と違います）</p>
-        <p class="hint">会話は決まったシナリオで進みます（自由な会話ではありません）。AI判定がオンのときは、会話の返事の文（韓国語）がAI（Claude）に送られます。データはこの端末のブラウザにのみ保存されます。</p>
+        <p class="hint">会話は決まったシナリオで進みます（自由な会話ではありません）。AI判定がオンのときは、会話の返事の文（韓国語）がAI（Claude）に送られます。学習記録は、登録して同意した場合だけ保存されます。データはこの端末のブラウザにのみ保存されます。</p>
       </div>
     </section>
   </main>

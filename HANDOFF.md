@@ -215,7 +215,7 @@ audio/sfx/   효과음(correct / wrong / tick)
 
 ### 구성
 - `worker/`: Cloudflare Worker. 브라우저 → Worker → Claude API(`claude-haiku-5-5`, effort `low`, JSON 형식 고정 출력). API 키는 Worker secret에만 둠
-- `config.js`: `aiEndpoint`(Worker URL + `/judge`). **비어 있으면 기존 간이 판정 그대로** 동작
+- `config.js`: `apiBase`(Worker URL. 부록 C에서 `aiEndpoint`를 대체). **비어 있으면 기존 간이 판정 그대로** 동작
 - `app.js`: 답변을 AI에 보내 `ok / almost / ng` 판정 + 일본어 조언 + 고친 문장 + 다른 표현을 표시. 판정 중에는 입력 잠금. 실패·시간 초과(15초) 시 그 답변만 간이 판정으로 처리하고 한 번 안내
 - 설정 화면: 「AI判定」 켜기/끄기(기본 켬), 「AIへの接続を確認する」, 진단 표에 「AI判定」 행. 「このデモについて」에 답변 문장이 Claude로 전송된다는 안내 추가
 
@@ -228,3 +228,32 @@ audio/sfx/   효과음(correct / wrong / tick)
 - 모델: 처음부터 `claude-haiku-5-5` 사용 (사용자 결정, 2026-11-01). 1회 약 0.06엔, 매일 20분 사용 시 1인당 월 약 54엔(추정, `worker/README.md`). 판정 품질이 부족하면 Sonnet/Opus로 변경 검토
 - 공개 범위: Worker는 Origin 검사만 함(위조 가능). 학습자에게 넓게 공개할 경우 Cloudflare Rate Limiting·로그인 등 추가 보호 여부 <!-- TODO: 사용자가 직접 채울 부분 -->
 - 학습자 답변을 외부 API로 보내는 것에 대한 안내 수준(수업에서 쓸 경우 학생 동의 등) <!-- TODO: 사용자가 직접 채울 부분 -->
+
+---
+
+# 부록 C: 학습 기록 저장 (2026-11-01, 브랜치 `claude/friendly-wright-2oq8gi`)
+
+### 결정 사항 (사용자 결정, 2026-11-01)
+- 학생 연습 데이터를 교수가 쓸 수 있게 저장한다.
+- **동북대 학생용**과 **TOFA 일반 수강생용**을 나눈다. 일반인은 연구 데이터로 쓰기 위해 성별·연령대·학습 경력·거주 지역도 받는다.
+
+### 구성
+- `worker/`: Cloudflare D1에 `learners`(등록·속성·연구 동의), `replies`(답변 1회), `sessions`(회화 1회) 저장. `/records/*`(등록·저장·삭제), `/export`(교사용 CSV, `EXPORT_KEY` 필요, `research=1`이면 연구 동의자만·가명 ID)
+- `wrangler.toml`의 `CLASS_CODES`로 클래스 코드와 구분(student/general)을 서버에서 고정
+- 앱: 첫 회화 전에 등록 화면(구분 선택 → 항목·동의문이 바뀜). 기록 저장 동의(필수)와 연구 이용 동의(선택)를 따로 받음. 「登録しないで使う」 가능. 설정에서 변경·해제(서버 기록 전부 삭제)
+- 녹음 음성은 저장하지 않음. Claude로는 답과 장면만 보내고 학번·닉네임·속성은 보내지 않음
+- `config.js`의 `consent`에 동의문용 정보(관리자·연락처·보관 기간·성적과의 관계·연구자·연구 주제). 지금은 모두 【】 자리표시
+- `docs/data-management-ja.md`: 윤리 심사용 「データの収集・管理方法（案）」
+
+### 공개 전에 사용자가 해야 할 것
+1. `config.js`의 `consent` 【】 채우기 <!-- TODO: 사용자가 직접 채울 부분 -->
+2. 윤리 심사(연구 이용 시) — `docs/data-management-ja.md`의 「要確認」 항목 정리 <!-- TODO: 사용자가 직접 채울 부분 -->
+3. 학생 성적과 기록의 관계(평상점 참고 여부) 결정 <!-- TODO: 사용자가 직접 채울 부분 -->
+4. TOFA 측 개인정보 방침과의 정합성, 동북대 연구자에게 데이터를 제공하는 것에 대한 TOFA 측 확인 <!-- TODO: 사용자가 직접 채울 부분 -->
+5. 18세 미만 일반 수강생의 보호자 동의 확인 방법 <!-- TODO: 사용자가 직접 채울 부분 -->
+6. Worker 배포(D1 생성·마이그레이션·`CLASS_CODES`·`EXPORT_KEY`) — `worker/README.md`
+
+### 주의
+- 학습 기록을 켜 둔 상태(`records: true`)에서 `apiBase`만 설정하고 `CLASS_CODES`를 비우면, 등록 화면은 나오지만 아무도 등록할 수 없음. 기록을 안 쓸 때는 `records: false`
+- 데모 리셋 버튼은 학습 기록 등록 정보를 지우지 않음(서버 기록과 연결이 끊기지 않도록)
+- 내보내기 시간은 UTC

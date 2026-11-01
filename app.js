@@ -7,8 +7,13 @@
   const STREAK_BONUS = 30;
   const EXCHANGE_COST = 300;
   const STORAGE_KEY = "kotalk-demo-v1";
-  // AI判定の接続先（config.js で設定。空なら、これまでの簡易判定〔文末・キーワード〕だけで動く）
-  const AI_ENDPOINT = ((window.KOTALK_CONFIG || {}).aiEndpoint || "").trim();
+  // サーバー（worker/）の設定は config.js。apiBase が空なら、これまでどおり端末の中だけで動く
+  const CFG = window.KOTALK_CONFIG || {};
+  const API_BASE = (CFG.apiBase || "").trim().replace(/\/+$/, "");
+  // AI判定の接続先（空なら、これまでの簡易判定〔文末・キーワード〕だけで動く）
+  const AI_ENDPOINT = API_BASE ? (CFG.aiJudge !== false ? `${API_BASE}/judge` : "") : (CFG.aiEndpoint || "").trim();
+  // 学習記録（クラスコードで登録し、同意した人の分だけ保存する）
+  const RECORDS_ON = !!API_BASE && CFG.records !== false;
   const AI_TIMEOUT_MS = 15000;
 
   // ===== 状態（デモのため localStorage に保存） =====
@@ -33,7 +38,8 @@
     sessions: [],        // 最近の練習 [{ theme, date, sec, ok, turns }]
     level: "中級",        // ホームで選んでいるレベル
     talkDone: {},        // 会話を終えたテーマ { themeId: { date, ok, turns } }
-    ai: true             // 会話の返事を AI（Claude）で判定する
+    ai: true,            // 会話の返事を AI（Claude）で判定する
+    records: null        // 学習記録 { status: "registered" | "declined", token, classCode, type, learnerId, research, profile }
   });
 
   let state = load();
@@ -162,6 +168,14 @@
     toast: $("toast"),
     inAppBanner: $("inAppBanner"), btnCopyUrl: $("btnCopyUrl"), ttsHelp: $("ttsHelp"),
     diag: $("diag"), diagUa: $("diagUa"),
+    // 学習記録
+    btnConsentBack: $("btnConsentBack"), recStatusCard: $("recStatusCard"), recStatusText: $("recStatusText"), btnRecDelete: $("btnRecDelete"),
+    consentForm: $("consentForm"), consentBody: $("consentBody"), recClass: $("recClass"), recId: $("recId"),
+    recIdLabel: $("recIdLabel"), recIdHint: $("recIdHint"), profileFields: $("profileFields"),
+    pfGender: $("pfGender"), pfAge: $("pfAge"), pfExp: $("pfExp"), pfRegion: $("pfRegion"),
+    consentText: $("consentText"), recAgree: $("recAgree"), recResearch: $("recResearch"), recResearchLabel: $("recResearchLabel"),
+    recError: $("recError"), btnRecSubmit: $("btnRecSubmit"), btnRecSkip: $("btnRecSkip"),
+    recSettingsCard: $("recSettingsCard"), recSettingsText: $("recSettingsText"), btnRecOpen: $("btnRecOpen"),
     sfxToggle: $("sfxToggle"), aiToggle: $("aiToggle"), aiStatus: $("aiStatus"), btnAiTest: $("btnAiTest"),
     stepWords: $("stepWords"),
     stepQuiz: $("stepQuiz"), stepScore: $("stepScore"), stepSentence: $("stepSentence"),
@@ -214,6 +228,7 @@
     if (name === "home") renderHome();
     if (name === "review") renderReview();
     if (name === "record") renderStreak();
+    if (name === "settings") { renderRecSettings(); renderDiagnostics(); }
     window.scrollTo(0, 0);
   }
   let practiceFocus = false;
@@ -406,6 +421,7 @@
       ["マイクの権限", micPermLabel()],
       ["録音方式", HAS_MR ? "MediaRecorder" : HAS_WEBAUDIO ? "WAV（互換モード）" : "×"],
       ["AI判定", !AI_ENDPOINT ? "未設定（簡易判定）" : state.ai !== false ? "オン" : "オフ"],
+      ["学習記録", !RECORDS_ON ? "使わない設定" : recRegistered() ? `登録済み（${state.records.classCode}）` : "未登録"],
       ["音声読み上げ", mark(HAS_TTS)],
       ["韓国語の読み上げ音声", HAS_TTS ? `${koVoices().length} 件` : "×"]
     ];
@@ -496,7 +512,10 @@
   el.btnAddPts.addEventListener("click", () => { state.points += 100; save(); renderStreak(); });
   el.btnReset.addEventListener("click", () => {
     if (!confirm("デモのデータをすべてリセットしますか？")) return;
+    // 学習記録の登録はサーバー側の記録と結び付いているので、リセットしても残す
+    const records = state.records;
     state = defaultState();
+    state.records = records;
     save();
     renderSentence();
     renderStreak();
@@ -549,6 +568,7 @@
 
   function syncRatio() {
     renderAiStatus();
+    renderRecSettings();
     el.sfxToggle.checked = state.sfx !== false;
     document.querySelectorAll('input[name="ratio"]').forEach(r => { r.checked = r.value === state.ratio; });
   }
@@ -690,6 +710,214 @@
     return ENDING.test(n) || /^(네|예|응|아니요|아뇨)/.test(n);
   }
 
+  // ===== 学習記録（学生用・一般用。登録して同意した人の分だけ、worker/ 経由で保存する） =====
+  function recRegistered() { return !!(state.records && state.records.status === "registered"); }
+  const newToken = () => (window.crypto && crypto.randomUUID ? crypto.randomUUID()
+    : Array.from({ length: 4 }, () => Math.random().toString(36).slice(2, 10)).join("-"));
+  const esc = t => String(t == null ? "" : t).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#39;" }[c]));
+  const TYPE_LABEL = { student: "東北大学の学生", general: "TOFA の受講生" };
+
+  async function postApi(path, data, keepalive) {
+    const res = await fetch(`${API_BASE}${path}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+      keepalive: !!keepalive
+    });
+    let body = null;
+    try { body = await res.json(); } catch (e) { body = null; }
+    return { ok: res.ok, status: res.status, body };
+  }
+
+  // 同意画面の説明文（学生用・一般用で分ける。【】は config.js で書き換える）
+  function consentHtml(type) {
+    const c = ((CFG.consent || {})[type]) || {};
+    const v = k => esc(c[k] || "【未設定】");
+    const voiceNote = "会話練習での返事（入力した文字、または音声認識で文字にしたもの。録音の音声そのものは保存しません）、判定の結果とAIのアドバイス、練習した日時と時間";
+    const where = "<li><b>保存先</b>：Cloudflare 社のデータベース（国外のサーバーに保存される場合があります）。AI判定がオンのときは、返事の文が判定のために Anthropic 社（米国）の AI「Claude」に送られます。</li>";
+    const quit = "<li><b>登録の解除</b>：いつでも「設定 → 学習記録」から解除できます。解除すると、これまでの記録はすべて削除されます。</li>";
+    if (type === "student") {
+      return `<h3>東北大学の学生の方へ：学習記録の取り扱い</h3>
+        <p>登録した場合に限り、次の情報を保存します。</p>
+        <ul>
+          <li><b>保存する情報</b>：クラスコード、学籍番号、${voiceNote}</li>
+          <li><b>利用目的</b>：授業での学習状況の確認と、指導・フィードバックのため</li>
+          <li><b>成績との関係</b>：${v("grading")}</li>
+          ${where}
+          <li><b>保存期間</b>：${v("retention")}</li>
+          <li><b>管理者・問い合わせ先</b>：${v("manager")}（${v("org")}）／${v("contact")}</li>
+          ${quit}
+        </ul>
+        <h3>研究での利用（任意）</h3>
+        <p>同意した場合に限り、${v("researcher")}が研究「${v("research")}」のために記録を利用します。研究では学籍番号を仮のIDに置き換え、個人が特定されない形で分析・発表します。<b>同意しなくても、授業や成績には一切影響しません。</b>同意は「設定 → 学習記録」からいつでも取り消せます。</p>`;
+    }
+    return `<h3>TOFA 受講生の方へ：学習記録の取り扱い</h3>
+      <p>登録した場合に限り、次の情報を保存します。</p>
+      <ul>
+        <li><b>保存する情報</b>：クラスコード、ニックネーム、性別・年代・韓国語の学習歴・お住まいの地域（どれも「回答しない」を選べます）、${voiceNote}</li>
+        <li><b>利用目的</b>：受講生の学習状況の把握と指導、講座の改善のため</li>
+        ${where}
+        <li><b>保存期間</b>：${v("retention")}</li>
+        <li><b>管理者・問い合わせ先</b>：${v("manager")}（${v("org")}）／${v("contact")}</li>
+        ${quit}
+        <li>18歳未満の方は、保護者の同意を得てから登録してください。</li>
+      </ul>
+      <h3>研究での利用（任意）</h3>
+      <p>同意した場合に限り、${v("researcher")}が研究「${v("research")}」のために、記録と上の属性（性別・年代・学習歴・地域）を利用します。研究ではニックネームを仮のIDに置き換え、個人が特定されない形で分析・発表します。<b>同意しなくても、受講には一切影響しません。</b>同意は「設定 → 学習記録」からいつでも取り消せます。</p>`;
+  }
+
+  let consentPending = null; // 登録のあとに始める会話テーマ
+  const learnerType = () => {
+    const r = el.consentForm.querySelector('input[name="learnerType"]:checked');
+    return r ? r.value : "";
+  };
+  function applyLearnerType() {
+    const type = learnerType();
+    el.consentBody.hidden = !type;
+    if (!type) return;
+    const student = type === "student";
+    el.recIdLabel.textContent = student ? "学籍番号" : "ニックネーム";
+    el.recId.placeholder = student ? "例）C1SB1234" : "例）さくら";
+    el.recIdHint.textContent = student
+      ? "半角英数字で入力してください。"
+      : "本名でなくてかまいません。講師があなたを見分けられる名前にしてください。";
+    el.profileFields.hidden = student;
+    el.consentText.innerHTML = consentHtml(type);
+    el.consentText.scrollTop = 0;
+    el.recResearchLabel.textContent = student
+      ? "研究での利用にも同意します（任意。授業・成績には影響しません）"
+      : "研究での利用にも同意します（任意。受講には影響しません）";
+    el.recError.textContent = "";
+  }
+
+  function renderConsent() {
+    const r = state.records;
+    const reg = recRegistered();
+    el.recStatusCard.hidden = !reg;
+    el.btnRecSkip.hidden = reg;
+    el.btnRecSubmit.textContent = reg ? "登録内容を変更する" : "登録する";
+    if (reg) {
+      el.recStatusText.textContent = `${TYPE_LABEL[r.type]}・クラス ${r.classCode}・${r.type === "student" ? "学籍番号" : "ニックネーム"} ${r.learnerId}・研究での利用：${r.research ? "同意" : "同意しない"}`;
+    }
+    el.consentForm.querySelectorAll('input[name="learnerType"]').forEach(x => { x.checked = !!(reg && x.value === r.type); });
+    el.recClass.value = reg ? r.classCode : "";
+    el.recId.value = reg ? r.learnerId : "";
+    const pf = (reg && r.profile) || {};
+    el.pfGender.value = pf.gender || "";
+    el.pfAge.value = pf.age_group || "";
+    el.pfExp.value = pf.experience || "";
+    el.pfRegion.value = pf.region || "";
+    el.recAgree.checked = reg;
+    el.recResearch.checked = !!(reg && r.research);
+    el.recError.textContent = "";
+    applyLearnerType();
+  }
+
+  function openConsent(pendingTalkId) {
+    consentPending = pendingTalkId || null;
+    renderConsent();
+    showView("consent");
+  }
+  function afterConsent() {
+    const id = consentPending;
+    consentPending = null;
+    if (id) startTalk(id);
+    else { renderRecSettings(); showView("settings"); }
+  }
+
+  el.consentForm.querySelectorAll('input[name="learnerType"]').forEach(x => x.addEventListener("change", applyLearnerType));
+  el.btnConsentBack.addEventListener("click", () => {
+    consentPending = null;
+    showView(recRegistered() || (state.records && state.records.status === "declined") ? "settings" : "home");
+  });
+  el.btnRecSkip.addEventListener("click", () => {
+    state.records = { status: "declined" };
+    save();
+    afterConsent();
+  });
+
+  el.consentForm.addEventListener("submit", async e => {
+    e.preventDefault();
+    const fail = msg => { el.recError.textContent = msg; };
+    const type = learnerType();
+    const classCode = el.recClass.value.trim().toUpperCase();
+    const learnerId = el.recId.value.trim();
+    if (!type) return fail("区分を選んでください。");
+    if (!classCode) return fail("クラスコードを入力してください。");
+    if (type === "student" && !/^[A-Za-z0-9-]{3,20}$/.test(learnerId)) return fail("学籍番号を半角英数字で入力してください。");
+    if (type === "general" && !learnerId) return fail("ニックネームを入力してください。");
+    const profile = type === "general"
+      ? { gender: el.pfGender.value, age_group: el.pfAge.value, experience: el.pfExp.value, region: el.pfRegion.value }
+      : null;
+    if (profile && Object.values(profile).some(v => !v)) return fail("性別・年代・学習歴・地域を選んでください（答えたくない項目は「回答しない」）。");
+    if (!el.recAgree.checked) return fail("登録するには、学習記録の保存への同意が必要です。");
+
+    el.btnRecSubmit.disabled = true;
+    fail("");
+    try {
+      const chk = await postApi("/records/class", { class_code: classCode });
+      if (!chk.ok) return fail("このクラスコードは使えません。先生・講師に確認してください。");
+      if (chk.body.learner_type !== type) {
+        return fail(`このクラスコードは「${TYPE_LABEL[chk.body.learner_type]}」用です。区分を確かめてください。`);
+      }
+      const token = (state.records && state.records.token) || newToken();
+      const res = await postApi("/records/register", {
+        device_token: token, class_code: classCode, learner_type: type, learner_id: learnerId,
+        research_ok: el.recResearch.checked, profile
+      });
+      if (!res.ok) return fail("登録できませんでした。入力内容を確かめて、もう一度お試しください。");
+      const changed = recRegistered();
+      state.records = { status: "registered", token, classCode, type, learnerId, research: el.recResearch.checked, profile };
+      save();
+      toast(changed ? "登録内容を変更しました" : "登録しました。練習の記録が保存されます");
+      afterConsent();
+    } catch (err) {
+      fail("サーバーに接続できませんでした。通信状態を確かめて、もう一度お試しください。");
+    } finally {
+      el.btnRecSubmit.disabled = false;
+    }
+  });
+
+  el.btnRecDelete.addEventListener("click", async () => {
+    if (!recRegistered()) return;
+    if (!confirm("登録を解除して、これまでの学習記録をすべて削除しますか？（元に戻せません）")) return;
+    try {
+      const res = await postApi("/records/delete", { device_token: state.records.token });
+      if (!res.ok) throw new Error(String(res.status));
+      state.records = { status: "declined" };
+      save();
+      toast("登録を解除し、記録を削除しました");
+      renderRecSettings();
+      showView("settings");
+    } catch (err) {
+      toast("削除できませんでした。通信状態を確かめて、もう一度お試しください");
+    }
+  });
+
+  function renderRecSettings() {
+    el.recSettingsCard.hidden = !RECORDS_ON;
+    if (!RECORDS_ON) return;
+    const r = state.records;
+    el.recSettingsText.textContent = recRegistered()
+      ? `登録済み：${TYPE_LABEL[r.type]}・クラス ${r.classCode}（研究での利用：${r.research ? "同意" : "同意しない"}）`
+      : "登録していません。練習の記録は保存されません（この端末の中の記録だけです）。";
+  }
+  el.btnRecOpen.addEventListener("click", () => openConsent(null));
+
+  // 記録を送る（失敗しても練習は止めない。登録していなければ何も送らない）
+  function sendRecord(path, data) {
+    if (!RECORDS_ON || !recRegistered()) return;
+    postApi(path, { device_token: state.records.token, ...data }, true).catch(() => {});
+  }
+  function logReply(turn, turnNo, tryNo, text, audioUrl, verdict, judgedBy, ai) {
+    sendRecord("/records/reply", {
+      theme: talk.theme.title, level: talk.theme.level, turn_no: turnNo, try_no: tryNo,
+      partner_ko: turn.ko, reply_ko: text || "", voice: !!audioUrl,
+      verdict, judged_by: judgedBy,
+      feedback_ja: ai ? ai.feedback_ja : "", corrected_ko: ai ? ai.corrected_ko : ""
+    });
+  }
+
   // ===== AI判定（Claude。APIキーを持つ Worker を経由する：worker/） =====
   // 接続先は設定値の AI_ENDPOINT（config.js）。
   const aiReady = () => !!AI_ENDPOINT && state.ai !== false;
@@ -780,6 +1008,8 @@
   }
 
   function startTalk(id) {
+    // 学習記録を使う設定で、まだ登録するか決めていなければ、先に登録画面を出す
+    if (RECORDS_ON && !state.records) { openConsent(id); return; }
     if (talkRec) stopTalkRec(true);
     const th = themeById(id);
     talk = { theme: th, i: 0, tries: 0, sec: 0, ok: 0, replies: [], done: false, finished: false };
@@ -912,6 +1142,7 @@
     if (!judged) {
       mark.textContent = "🎙️ 録音で返事しました";
       talk.replies.push({ ko: text, ok: null, hint: turn.hint.ko, turn: turnNo, audio: audioUrl });
+      logReply(turn, turnNo, talk.tries + 1, text, audioUrl, "", "none", null);
       addBubble("system", div => {
         div.innerHTML = "<p class=\"b-note\">この端末では音声の文字起こしができないため、内容は判定していません。</p><p class=\"b-ja\"></p><p class=\"b-ko\" lang=\"ko\"></p>";
         div.querySelector(".b-ja").textContent = "参考の答えと聞き比べてみましょう。";
@@ -948,6 +1179,7 @@
     mark.textContent = ok ? "✓ 通じました" : "💡 もう少し";
     bubble.classList.toggle("ok", ok);
     talk.replies.push({ ko: text, ok, hint: (ai && ai.better_ko) || turn.hint.ko, turn: turnNo, audio: audioUrl, ai: !!ai });
+    logReply(turn, turnNo, talk.tries + 1, text, audioUrl, ai ? ai.verdict : ok ? "ok" : "ng", ai ? "ai" : "rule", ai);
 
     if (ok) {
       sfx.correct();
@@ -1114,6 +1346,9 @@
     if (talkRec) stopTalkRec(true);
     const th = talk.theme;
     if (talk.sec > 0 || talk.replies.length) {
+      sendRecord("/records/session", {
+        theme: th.title, level: th.level, seconds: talk.sec, turns: talk.replies.length, ok_count: talk.ok, finished: !!talk.finished
+      });
       state.sessions.unshift({ theme: th.id, date: today(), sec: talk.sec, ok: talk.ok, turns: talk.replies.length });
       state.sessions = state.sessions.slice(0, 20);
     }

@@ -447,3 +447,19 @@ body:not(.focus) .composer { display: none; }
 .icon-btn.mic.on { animation: pulse 1.2s infinite; }
 .bubble.system.tip { background: #eef3fb; border-color: #d3dff2; padding: 8px 14px; }
 .bubble.system.tip .b-ko { font-size: 15px; }
+
+/* ===== 学習記録の登録 ===== */
+.consent-form fieldset { border: 0; padding: 0; margin: 0 0 12px; }
+.consent-form legend { font-size: 13px; font-weight: 700; margin-bottom: 8px; }
+.field { display: block; margin: 0 0 12px; }
+.field > span { display: block; font-size: 13px; font-weight: 700; margin-bottom: 4px; }
+.field input[type="text"], .field select {
+  width: 100%; min-height: 44px; border-radius: 12px; border: 1px solid var(--line); background: var(--surface);
+  padding: 0 12px; font: inherit; font-size: 16px; color: var(--text);
+}
+.consent-text { max-height: 280px; overflow-y: auto; border: 1px solid var(--line); border-radius: 12px; background: var(--surface-2); padding: 10px 14px; font-size: 13px; line-height: 1.7; margin: 4px 0 12px; }
+.consent-text h3 { font-size: 14px; margin: 6px 0; }
+.consent-text ul { padding-left: 18px; margin: 4px 0 8px; }
+.check-row.strong { color: var(--text); font-weight: 700; }
+.check-row input { flex: none; }
+.form-error { color: var(--accent); font-size: 13px; font-weight: 700; min-height: 1em; margin: 4px 0; }
