@@ -65,7 +65,7 @@
         <div class="composer" id="composer">
           <label for="talkInput" class="composer-label">韓国語で入力、または 🎤 をタップして声で返事</label>
           <div class="composer-row">
-            <input id="talkInput" type="text" lang="ko" placeholder="예: 안녕하세요" autocomplete="off" enterkeyhint="send">
+            <input id="talkInput" type="text" lang="ko" placeholder="例）안녕하세요" autocomplete="off" enterkeyhint="send">
             <button class="icon-btn mic" id="btnTalkMic" type="button" aria-label="声で返事を録音">🎤</button>
             <button class="btn send" id="btnTalkSend" type="button" disabled>送る</button>
           </div>
@@ -93,7 +93,7 @@
           <ul class="sum-replies" id="sumReplies"></ul>
         </div>
         <div class="sum-actions" id="sumActions">
-          <button class="btn cta block" id="btnSumPron" type="button">🎙️ 今日の例文で発音チェック</button>
+          <button class="btn cta block" id="btnSumPron" type="button">📖 今日の例文を確認</button>
           <button class="btn ghost block" id="btnSumQuiz" type="button">🔤 関連単語クイズ</button>
           <button class="btn ghost block" id="btnSumRetry" type="button">もう一度この会話を練習する</button>
           <button class="btn link" id="btnSumHome" type="button">ホームに戻る</button>
@@ -104,11 +104,11 @@
     <!-- ===== 復習 ===== -->
     <section id="view-review" class="view" aria-labelledby="h-review">
       <h1 id="h-review" class="serif-h">復習</h1>
-      <p class="lead">会話テーマの単語と例文を、カード・クイズ・発音チェックで復習します。</p>
+      <p class="lead">会話テーマの単語と例文を、カード・クイズ・例文の解説で復習します。</p>
       <div class="review-themes" id="reviewThemes"></div>
     </section>
 
-    <!-- ===== 単語・クイズ・発音チェック（テーマごとの練習） ===== -->
+    <!-- ===== 単語・クイズ・今日の例文（テーマごとの練習） ===== -->
     <section id="view-practice" class="view" aria-label="テーマの練習">
 
       <!-- じっくり単語練習（カード形式） -->
@@ -186,9 +186,9 @@
         <button class="btn cta block" id="btnScoreHome" type="button">完了</button>
       </div>
 
-      <!-- 会話練習 -->
+      <!-- 今日の例文 -->
       <div class="lesson-step" id="stepSentence" hidden>
-      <div class="step-head"><span class="tag">発音チェック</span><button class="btn link" id="btnSentenceHome" type="button">← 戻る</button></div>
+      <div class="step-head"><span class="tag">今日の例文</span><button class="btn link" id="btnSentenceHome" type="button">← 戻る</button></div>
       <div class="card sentence-card">
         <div class="card-label">今日の例文 <span class="muted" id="sentenceIndex"></span></div>
         <p class="ko-sentence" id="koSentence" lang="ko"></p>
@@ -207,37 +207,9 @@
           <dl class="expl-grammar" id="explGrammar"></dl>
         </div>
         <div class="help-box" id="ttsHelp" hidden></div>
-      </div>
-
-      <!-- 録音 -->
-      <div class="card" id="recordCard">
-        <div class="card-label">声に出して読んでみましょう（7秒）</div>
-        <button class="rec-btn" id="btnRec" type="button" aria-label="録音開始">
-          <span class="rec-dot"></span>
-        </button>
-        <div class="rec-timer" id="recTimer" hidden>
-          <div class="rec-timer-track"><i id="recTimerBar"></i></div>
-          <span class="rec-count" id="recCount" aria-live="polite"></span>
-        </div>
-        <p class="rec-status" id="recStatus">マイクをタップして録音</p>
-        <audio id="playback" controls hidden></audio>
-        <button class="btn primary block" id="btnEvaluate" type="button" hidden>この録音で評価する</button>
-        <button class="btn link" id="btnNoMic" type="button" hidden>デモ評価を見る（仮点数）</button>
-      </div>
-
-      <!-- フィードバック -->
-      <div class="card" id="resultCard" hidden>
-        <div class="demo-banner" role="note">これはデモ用の仮点数です<br><small>（実際の発音評価ではありません）</small></div>
-        <div class="card-label">フィードバック</div>
-        <div class="score-ring" id="scoreRing"><span id="scoreTotal">--</span><small>点</small></div>
-        <div class="sub-scores" id="subScores"></div>
-        <div class="ratio-note" id="ratioNote"></div>
-        <ul class="feedback-list" id="feedbackList"></ul>
-        <p class="hint">各コメントをタップすると、もう一方の言語で表示します。</p>
-        <div class="reward" id="rewardBox" hidden></div>
         <button class="btn cta block" id="btnToQuiz" type="button">関連単語クイズへ</button>
-        <button class="btn ghost block" id="btnRetry" type="button">もう一度録音する</button>
       </div>
+
       </div>
     </section>
 
@@ -321,7 +293,7 @@
       <div class="card">
         <div class="card-label">効果音</div>
         <label class="switch-row">
-          <span>クイズの正解・不正解音、録音のカウント音、会話で通じたときの音</span>
+          <span>クイズの正解・不正解音、会話で通じたときの音</span>
           <input type="checkbox" id="sfxToggle" checked>
         </label>
       </div>
@@ -334,7 +306,7 @@
       <div class="card">
         <div class="card-label">このデモについて</div>
         <p class="hint">バージョン：<b id="appVersion">__VERSION__</b>（画面が古いときは、この表示が最新の更新と違います）</p>
-        <p class="hint">会話は決まったシナリオで進みます（自由な会話ではありません）。発音評価はダミー点数です。データはこの端末のブラウザにのみ保存されます。</p>
+        <p class="hint">会話は決まったシナリオで進みます（自由な会話ではありません）。データはこの端末のブラウザにのみ保存されます。</p>
       </div>
     </section>
   </main>
