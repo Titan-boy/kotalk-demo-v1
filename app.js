@@ -26,7 +26,12 @@
     completed: {},       // 完了したレッスン { レッスン番号: { date, score } }
     mada: {},            // 単語カードで「まだ」にした単語 { レッスン番号: [ko, ...] }
     quizDate: null,      // 単語テストを最後に受けた日（ポイントは1日1回）
-    lastQuizScore: null
+    lastQuizScore: null,
+    goal: 15,            // 1日の目標（分）
+    practice: {},        // 練習時間 { "YYYY-MM-DD": 秒 }
+    sessions: [],        // 最近の練習 [{ theme, date, sec, ok, turns }]
+    level: "中級",        // ホームで選んでいるレベル
+    talkDone: {}         // 会話を終えたテーマ { themeId: { date, ok, turns } }
   });
 
   let state = load();
@@ -221,25 +226,34 @@
     inAppBanner: $("inAppBanner"), btnCopyUrl: $("btnCopyUrl"), ttsHelp: $("ttsHelp"),
     diag: $("diag"), diagUa: $("diagUa"),
     recTimer: $("recTimer"), recTimerBar: $("recTimerBar"), recCount: $("recCount"), sfxToggle: $("sfxToggle"),
-    stepStart: $("stepStart"), stepWords: $("stepWords"),
+    stepWords: $("stepWords"),
     stepQuiz: $("stepQuiz"), stepScore: $("stepScore"), stepSentence: $("stepSentence"),
-    startDate: $("startDate"), startIndex: $("startIndex"), startKo: $("startKo"), startJa: $("startJa"),
-    startStreak: $("startStreak"), startDone: $("startDone"),
-    btnStartWords: $("btnStartWords"), btnStartTalk: $("btnStartTalk"), btnStartNext: $("btnStartNext"),
     btnWordsClose: $("btnWordsClose"), wordsBar: $("wordsBar"), wordTag: $("wordTag"),
     wordNo: $("wordNo"), wordKo: $("wordKo"), wordJa: $("wordJa"), wordKana: $("wordKana"), wordSentence: $("wordSentence"),
     btnWordSpeak: $("btnWordSpeak"), btnReveal: $("btnReveal"), wordBack: $("wordBack"),
     rateRow: $("rateRow"), btnMada: $("btnMada"), btnOboeta: $("btnOboeta"),
     btnWordPrev: $("btnWordPrev"), btnWordNext: $("btnWordNext"),
-    stepList: $("stepList"), lessonList: $("lessonList"), btnListBack: $("btnListBack"), btnStartList: $("btnStartList"),
-    startBadge: $("startBadge"),
     quizFeedback: $("quizFeedback"), qfTitle: $("qfTitle"), qfAnswer: $("qfAnswer"), qfEx: $("qfEx"), btnQuizNext: $("btnQuizNext"),
     quizTag: $("quizTag"), stepIcoWords: $("stepIcoWords"), btnSentenceHome: $("btnSentenceHome"),
     btnQuizClose: $("btnQuizClose"), quizBar: $("quizBar"), quizNo: $("quizNo"), quizWord: $("quizWord"),
     btnSkip: $("btnSkip"), quizOptions: $("quizOptions"),
     quizCorrect: $("quizCorrect"), quizTotal: $("quizTotal"), vocabScore: $("vocabScore"), scoreSub: $("scoreSub"),
     coachMsg: $("coachMsg"), reviewCard: $("reviewCard"), reviewList: $("reviewList"),
-    btnScoreHome: $("btnScoreHome"), btnScoreNext: $("btnScoreNext")
+    btnScoreHome: $("btnScoreHome"), stepIcoTalk: $("stepIcoTalk"),
+    btnSettings: $("btnSettings"), btnSettingsBack: $("btnSettingsBack"),
+    // ホーム
+    todayMin: $("todayMin"), goalMin: $("goalMin"), todayBar: $("todayBar"), chipStreak: $("chipStreak"), chipWeek: $("chipWeek"),
+    btnHeroStart: $("btnHeroStart"), heroNote: $("heroNote"), themeList: $("themeList"), recentList: $("recentList"),
+    // 会話
+    talkMain: $("talkMain"), talkSummary: $("talkSummary"), talkTitle: $("talkTitle"), talkLevel: $("talkLevel"),
+    talkRemain: $("talkRemain"), talkElapsed: $("talkElapsed"), btnTalkEnd: $("btnTalkEnd"), talkPartner: $("talkPartner"),
+    autoRead: $("autoRead"), exprBox: $("exprBox"), exprList: $("exprList"), chatLog: $("chatLog"),
+    talkInput: $("talkInput"), btnTalkMic: $("btnTalkMic"), btnTalkSend: $("btnTalkSend"), btnHint: $("btnHint"), micStatus: $("micStatus"),
+    sumTheme: $("sumTheme"), sumTime: $("sumTime"), sumTurns: $("sumTurns"), sumOk: $("sumOk"), sumReward: $("sumReward"),
+    sumReplies: $("sumReplies"), btnSumPron: $("btnSumPron"), btnSumQuiz: $("btnSumQuiz"), btnSumRetry: $("btnSumRetry"), btnSumHome: $("btnSumHome"),
+    // 復習・記録
+    reviewThemes: $("reviewThemes"),
+    recToday: $("recToday"), recWeek: $("recWeek"), rec4w: $("rec4w"), weekBars: $("weekBars")
   };
 
   let toastTimer;
@@ -251,13 +265,23 @@
   }
 
   // ===== 画面切り替え =====
+  // タブ：ホーム / 復習 / 記録。会話・テーマの練習・設定はタブを持たない画面
+  let currentView = "home";
+  let prevView = "home";
+  function showView(name) {
+    if (name !== currentView) prevView = currentView;
+    currentView = name;
+    document.querySelectorAll(".view").forEach(v => v.classList.toggle("active", v.id === `view-${name}`));
+    document.querySelectorAll(".tab").forEach(t => t.classList.toggle("active", t.dataset.view === name));
+    document.body.classList.toggle("focus", (name === "talk" && !el.talkMain.hidden) || (name === "practice" && practiceFocus));
+    if (name === "home") renderHome();
+    if (name === "review") renderReview();
+    if (name === "record") renderStreak();
+    window.scrollTo(0, 0);
+  }
+  let practiceFocus = false;
   document.querySelectorAll(".tab").forEach(tab => {
-    tab.addEventListener("click", () => {
-      document.querySelectorAll(".tab").forEach(t => t.classList.toggle("active", t === tab));
-      document.querySelectorAll(".view").forEach(v => v.classList.toggle("active", v.id === `view-${tab.dataset.view}`));
-      if (tab.dataset.view === "streak") renderStreak();
-      window.scrollTo(0, 0);
-    });
+    tab.addEventListener("click", () => showView(tab.dataset.view));
   });
 
   // ===== 例文 =====
@@ -609,6 +633,7 @@
 
   function renderStreak() {
     const t = today();
+    renderMinutes();
     const st = streakStatus();
     el.streakNum.textContent = st.streak;
     el.pointsNum.textContent = state.points;
@@ -628,9 +653,9 @@
 
     if (state.last === t) el.streakHint.textContent = "今日の練習は完了！また明日。";
     else if (st.needsRest) el.streakHint.textContent = "昨日は練習なし。今日練習すれば休息券で連続記録が守られます。";
-    else if (st.alive) el.streakHint.textContent = "今日の1文でまだ連続記録をつなげられます。";
+    else if (st.alive) el.streakHint.textContent = "今日の会話練習で、まだ連続記録をつなげられます。";
     else if (state.last) el.streakHint.textContent = "連続記録が途切れました。今日からまた始めましょう。";
-    else el.streakHint.textContent = "最初の1文を録音して出席をスタート！";
+    else el.streakHint.textContent = "テーマを選んで会話を最後まで終えると出席になります。";
 
     // 講師フィードバック交換
     el.exchangeCost.textContent = EXCHANGE_COST;
@@ -684,9 +709,9 @@
     save();
     resetRecording();
     renderSentence();
-    goStart();
     renderStreak();
     syncRatio();
+    showView("home");
   });
 
   // ===== 設定 =====
@@ -708,20 +733,439 @@
     });
   });
 
-  // ===== レッスンの流れ =====
-  // スタート画面 →（じっくり単語練習 →）会話練習（例文・録音・フィードバック）→ 関連単語クイズ（＋「まだ」の復習）→ 採点表
-  const QUIZ_POINTS_PER_CORRECT = 2;
-  let quiz = null;          // { items: [{ko, ja, kana, inSentence, review, options[]}], i, answers: [bool] }
-  let wordIdx = 0;          // じっくり単語練習の現在位置
-  let wordsStudied = false; // このレッスンで単語練習をしたか
-  let wordsReturn = "sentence"; // 単語練習を終えた後の行き先
-  let revealed = new Set(); // 意味を表示したカード（このレッスン内）
-
+  // ===== 共通 =====
+  const THEMES = window.THEMES;
+  const themeById = id => THEMES.find(t => t.id === id);
+  const themeOfLesson = n => THEMES.find(t => t.lesson === n);
   const shuffle = arr => {
     const a = arr.slice();
     for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; }
     return a;
   };
+  const fmtMS = sec => `${Math.floor(sec / 60)}分${pad(sec % 60)}秒`;
+  const secOn = k => state.practice[k] || 0;
+  const sumSec = n => { let s = 0; for (let i = 0; i < n; i++) s += secOn(addDays(today(), -i)); return s; };
+  const daysPracticed = n => {
+    let c = 0;
+    for (let i = 0; i < n; i++) { const k = addDays(today(), -i); if (secOn(k) >= 60 || state.history[k] === "check") c++; }
+    return c;
+  };
+  const dowJa = k => "日月火水木金土"[fromKey(k).getDay()];
+
+  // ===== 練習時間の計測（会話・テーマの練習を開いている間だけ数える） =====
+  let tickLast = Date.now();
+  setInterval(() => {
+    const now = Date.now();
+    const dt = Math.min(5, Math.round((now - tickLast) / 1000));
+    tickLast = now;
+    if (document.hidden || dt <= 0) return;
+    const inTalk = currentView === "talk" && talk && !talk.done;
+    if (!inTalk && currentView !== "practice") return;
+    const t = today();
+    state.practice[t] = secOn(t) + dt;
+    if (inTalk) { talk.sec += dt; renderTalkTime(); }
+    save();
+  }, 1000);
+
+  // ===== ホーム =====
+  function recommendedTheme() {
+    const list = THEMES.filter(t => t.level === state.level);
+    return list.find(t => !state.talkDone[t.id]) || list[0];
+  }
+
+  function renderHome() {
+    const t = today();
+    const sec = secOn(t);
+    el.todayMin.textContent = Math.floor(sec / 60);
+    el.goalMin.textContent = state.goal;
+    el.todayBar.style.width = `${Math.min(100, (sec / (state.goal * 60)) * 100)}%`;
+    el.chipStreak.textContent = `🔥 ${streakStatus().streak} 日連続`;
+    el.chipWeek.textContent = `直近7日で ${daysPracticed(7)} 日練習`;
+    const goal4 = state.goal * 28;
+    const cur = Math.floor(sumSec(28) / 60);
+    el.heroNote.textContent = `4週間の目標 ${goal4} 分まで、あと ${Math.max(0, goal4 - cur)} 分（現在 ${cur} 分・${Math.min(100, Math.round((cur / goal4) * 100))}%）`;
+    el.btnHeroStart.textContent = `練習をはじめる（${recommendedTheme().title}）`;
+
+    document.querySelectorAll(".seg-btn").forEach(b => {
+      const on = b.dataset.level === state.level;
+      b.classList.toggle("active", on);
+      b.setAttribute("aria-selected", String(on));
+    });
+    el.themeList.innerHTML = "";
+    THEMES.filter(th => th.level === state.level).forEach(th => {
+      const done = state.talkDone[th.id];
+      const card = document.createElement("button");
+      card.type = "button";
+      card.className = "theme-card";
+      card.innerHTML = `<span class="tc-head"><b class="tc-title"></b><span class="tc-ko" lang="ko"></span></span>
+        <span class="tc-desc"></span><span class="tc-foot"><span class="tc-cta">このテーマで練習する →</span><span class="tc-done"></span></span>`;
+      card.querySelector(".tc-title").textContent = th.title;
+      card.querySelector(".tc-ko").textContent = th.ko;
+      card.querySelector(".tc-desc").textContent = th.desc;
+      card.querySelector(".tc-done").textContent = done ? "✅ 練習済み" : "";
+      card.addEventListener("click", () => startTalk(th.id));
+      el.themeList.appendChild(card);
+    });
+
+    el.recentList.innerHTML = "";
+    if (!state.sessions.length) {
+      const li = document.createElement("li");
+      li.className = "recent-empty";
+      li.textContent = "まだ練習の記録はありません。テーマを選んで始めましょう。";
+      el.recentList.appendChild(li);
+    }
+    state.sessions.slice(0, 5).forEach(r => {
+      const th = themeById(r.theme);
+      if (!th) return;
+      const d = fromKey(r.date);
+      const li = document.createElement("li");
+      li.innerHTML = "<b></b><span class=\"recent-meta\"></span><span class=\"recent-time\"></span>";
+      li.children[0].textContent = th.title;
+      li.children[1].textContent = `${d.getMonth() + 1}/${d.getDate()}(${dowJa(r.date)})・${th.level}`;
+      li.children[2].textContent = r.sec >= 60 ? `${Math.floor(r.sec / 60)}分${r.sec % 60}秒` : `${r.sec}秒`;
+      el.recentList.appendChild(li);
+    });
+    renderPoints();
+  }
+
+  document.querySelectorAll(".seg-btn").forEach(b => b.addEventListener("click", () => {
+    state.level = b.dataset.level;
+    save();
+    renderHome();
+  }));
+  el.btnHeroStart.addEventListener("click", () => startTalk(recommendedTheme().id));
+
+  // ===== 会話練習（決まったシナリオ） =====
+  // TODO(API): 自由な会話にする場合は、ここをサーバー経由の LLM 呼び出しに置き換える（APIキーはフロントに置かない）
+  let talk = null; // { theme, i, tries, sec, ok, replies: [{ ko, ok, hint }], done, finished }
+  const partnerAudio = new Audio();
+  const lineAudio = (th, n) => `audio/talk/${th.id}-${n}.mp3`;
+
+  function playLine(src) {
+    partnerAudio.pause();
+    partnerAudio.src = src;
+    const p = partnerAudio.play();
+    if (p && p.catch) p.catch(() => {});
+  }
+
+  // 空白・記号を無視して、キーワードのどれかが入っていれば「通じた」
+  const norm = t => t.replace(/[\s.,!?~。、！？…'"「」]/g, "");
+  const hasHangul = t => /[가-힣]/.test(t);
+  const understood = (text, kw) => kw.some(k => norm(text).includes(norm(k)));
+
+  function startTalk(id) {
+    const th = themeById(id);
+    talk = { theme: th, i: 0, tries: 0, sec: 0, ok: 0, replies: [], done: false, finished: false };
+    el.talkTitle.textContent = th.title;
+    el.talkLevel.textContent = th.level;
+    el.talkPartner.textContent = `相手：${th.partner.name}（${th.partner.role}）`;
+    el.exprList.innerHTML = "";
+    th.expressions.forEach(x => {
+      const li = document.createElement("li");
+      li.innerHTML = "<b lang=\"ko\"></b><small></small>";
+      li.firstChild.textContent = x.ko;
+      li.lastChild.textContent = x.ja;
+      el.exprList.appendChild(li);
+    });
+    // 中級テーマは、例文の文法解説も「使える表現」の中に入れる
+    if (th.lesson != null) {
+      const e = window.SENTENCES[th.lesson].expl;
+      const li = document.createElement("li");
+      li.className = "expr-grammar";
+      li.innerHTML = "<span class=\"expr-g-label\">今日の例文の文法</span>";
+      e.grammar.forEach(g => {
+        const p = document.createElement("p");
+        p.innerHTML = "<b lang=\"ko\"></b> ";
+        p.firstChild.textContent = g.form;
+        p.appendChild(document.createTextNode(g.ja));
+        li.appendChild(p);
+      });
+      el.exprList.appendChild(li);
+    }
+    el.exprBox.open = false;
+    el.chatLog.innerHTML = "";
+    el.talkInput.value = "";
+    el.talkInput.disabled = false;
+    el.btnTalkSend.disabled = true;
+    el.btnTalkMic.disabled = false;
+    el.btnHint.disabled = false;
+    el.micStatus.textContent = "";
+    el.btnTalkEnd.textContent = "練習をおわる";
+    el.talkSummary.hidden = true;
+    el.talkMain.hidden = false;
+    showView("talk");
+    renderTalkTime();
+    partnerSay(0);
+  }
+
+  function renderTalkTime() {
+    if (!talk) return;
+    el.talkRemain.textContent = fmtMS(Math.max(0, state.goal * 60 - secOn(today())));
+    el.talkElapsed.textContent = fmtMS(talk.sec);
+  }
+
+  function addBubble(cls, build) {
+    const div = document.createElement("div");
+    div.className = `bubble ${cls}`;
+    build(div);
+    el.chatLog.appendChild(div);
+    div.scrollIntoView({ behavior: "smooth", block: "end" });
+    return div;
+  }
+
+  function partnerSay(n) {
+    const th = talk.theme;
+    const line = n < th.turns.length ? th.turns[n] : th.close;
+    const src = lineAudio(th, n + 1);
+    addBubble("partner", div => {
+      div.innerHTML = "<p class=\"b-ko\" lang=\"ko\"></p><p class=\"b-ja\"></p><button class=\"b-listen\" type=\"button\">🔊 聞く</button>";
+      div.querySelector(".b-ko").textContent = line.ko;
+      div.querySelector(".b-ja").textContent = line.ja;
+      div.querySelector(".b-listen").addEventListener("click", () => playLine(src));
+    });
+    if (el.autoRead.checked) playLine(src);
+  }
+
+  function showHint(turn, note) {
+    addBubble("system", div => {
+      div.innerHTML = "<p class=\"b-note\"></p><p class=\"b-ja\"></p><p class=\"b-ko\" lang=\"ko\"></p><button class=\"b-use\" type=\"button\">この文を入力欄に入れる</button>";
+      div.querySelector(".b-note").textContent = note;
+      div.querySelector(".b-ja").textContent = `💡 ${turn.hint.ja}`;
+      div.querySelector(".b-ko").textContent = `例）${turn.hint.ko}`;
+      div.querySelector(".b-use").addEventListener("click", () => {
+        el.talkInput.value = turn.hint.ko;
+        el.btnTalkSend.disabled = false;
+        el.talkInput.focus();
+      });
+    });
+  }
+
+  function sendReply() {
+    if (!talk || talk.finished) return;
+    const text = el.talkInput.value.trim();
+    if (!text) return;
+    const th = talk.theme;
+    const turn = th.turns[talk.i];
+    el.talkInput.value = "";
+    el.btnTalkSend.disabled = true;
+    const ok = hasHangul(text) && understood(text, turn.kw);
+    addBubble("me", div => {
+      div.innerHTML = "<p class=\"b-ko\" lang=\"ko\"></p><span class=\"b-mark\"></span>";
+      div.firstChild.textContent = text;
+      div.lastChild.textContent = ok ? "✓ 通じました" : "💡 もう少し";
+      div.classList.toggle("ok", ok);
+    });
+    talk.replies.push({ ko: text, ok, hint: turn.hint.ko, turn: talk.i });
+    if (ok) {
+      sfx.correct();
+      talk.ok++;
+      nextTurn();
+      return;
+    }
+    talk.tries++;
+    if (!hasHangul(text)) {
+      showHint(turn, "韓国語（ハングル）で書いてみましょう。");
+    } else if (talk.tries >= 2) {
+      showHint(turn, "この言い方も覚えておきましょう。会話は先に進みます。");
+      nextTurn();
+    } else {
+      showHint(turn, "相手にうまく伝わらなかったようです。ヒントを見てもう一度どうぞ。");
+    }
+  }
+
+  function nextTurn() {
+    talk.i++;
+    talk.tries = 0;
+    setTimeout(() => {
+      if (!talk || talk.done) return;
+      partnerSay(talk.i);
+      if (talk.i >= talk.theme.turns.length) {
+        // 最後のあいさつまで来たら会話完了
+        talk.finished = true;
+        el.talkInput.disabled = true;
+        el.btnTalkSend.disabled = true;
+        el.btnTalkMic.disabled = true;
+        el.btnHint.disabled = true;
+        el.btnTalkEnd.textContent = "結果を見る";
+        addBubble("system done", div => {
+          div.innerHTML = "<p class=\"b-note\">会話が終わりました 🎉</p><button class=\"btn cta block\" type=\"button\">結果を見る</button>";
+          div.querySelector("button").addEventListener("click", finishTalk);
+        });
+      }
+    }, 700);
+  }
+
+  el.talkInput.addEventListener("input", () => { el.btnTalkSend.disabled = !el.talkInput.value.trim(); });
+  el.talkInput.addEventListener("keydown", e => {
+    if (e.key === "Enter" && !e.isComposing) { e.preventDefault(); sendReply(); }
+  });
+  el.btnTalkSend.addEventListener("click", sendReply);
+  el.btnHint.addEventListener("click", () => {
+    if (talk && !talk.finished) showHint(talk.theme.turns[talk.i], "ヒント");
+  });
+  el.btnTalkEnd.addEventListener("click", finishTalk);
+
+  // 音声入力（ブラウザの音声認識。非対応の端末ではキーボードの音声入力を案内）
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  let sr = null;
+  el.btnTalkMic.addEventListener("click", () => {
+    if (!SR) {
+      el.micStatus.textContent = "この端末は音声入力に未対応です。キーボードのマイクをお使いください";
+      return;
+    }
+    if (sr) { sr.stop(); return; }
+    sr = new SR();
+    sr.lang = "ko-KR";
+    sr.interimResults = true;
+    sr.onresult = e => {
+      el.talkInput.value = Array.from(e.results).map(r => r[0].transcript).join("");
+      el.btnTalkSend.disabled = !el.talkInput.value.trim();
+    };
+    sr.onerror = e => {
+      el.micStatus.textContent = e.error === "not-allowed" ? `マイクが許可されていません。${micHowTo()}` : "うまく聞き取れませんでした";
+    };
+    sr.onend = () => { sr = null; el.btnTalkMic.classList.remove("on"); if (el.micStatus.textContent === "聞いています…") el.micStatus.textContent = ""; };
+    el.btnTalkMic.classList.add("on");
+    el.micStatus.textContent = "聞いています…";
+    sr.start();
+  });
+
+  function finishTalk() {
+    if (!talk || talk.done) return;
+    talk.done = true;
+    partnerAudio.pause();
+    if (sr) sr.stop();
+    const th = talk.theme;
+    if (talk.sec > 0 || talk.replies.length) {
+      state.sessions.unshift({ theme: th.id, date: today(), sec: talk.sec, ok: talk.ok, turns: talk.replies.length });
+      state.sessions = state.sessions.slice(0, 20);
+    }
+    let ci = null;
+    if (talk.finished) {
+      state.talkDone[th.id] = { date: today(), ok: talk.ok, turns: th.turns.length };
+      ci = checkIn(); // 会話を最後まで終えたら出席
+    }
+    save();
+    renderPoints();
+
+    el.sumTheme.textContent = `${th.title}（${th.level}）・相手：${th.partner.name}`;
+    el.sumTime.textContent = talk.sec >= 60 ? `${Math.floor(talk.sec / 60)}分` : `${talk.sec}秒`;
+    el.sumTurns.textContent = talk.replies.length;
+    el.sumOk.textContent = talk.ok;
+    const box = el.sumReward;
+    if (ci && !ci.already) {
+      const lines = [`🔥 出席 ${state.streak}日目！ <strong>+${ci.gained}pt</strong>`];
+      if (ci.bonus) lines.push(`🎉 ${STREAK_BONUS_EVERY}日連続ボーナス +${STREAK_BONUS}pt`);
+      if (ci.usedRest) lines.push("💤 昨日の分は休息券で連続記録を守りました");
+      box.innerHTML = lines.join("<br>");
+      box.hidden = false;
+      toast(`+${ci.gained}pt 獲得`);
+    } else if (ci && ci.already) {
+      box.textContent = "今日の出席は記録済みです。";
+      box.hidden = false;
+    } else {
+      box.textContent = "最後まで会話を終えると出席になります（+10pt）。";
+      box.hidden = false;
+    }
+    el.sumReplies.innerHTML = "";
+    if (!talk.replies.length) {
+      const li = document.createElement("li");
+      li.textContent = "返事はまだありません。";
+      el.sumReplies.appendChild(li);
+    }
+    talk.replies.forEach(r => {
+      const li = document.createElement("li");
+      li.className = r.ok ? "ok" : "ng";
+      li.innerHTML = "<span class=\"sr-mark\"></span><span class=\"sr-body\"><b lang=\"ko\"></b><small lang=\"ko\"></small></span>";
+      li.querySelector(".sr-mark").textContent = r.ok ? "✓" : "💡";
+      li.querySelector("b").textContent = r.ko;
+      li.querySelector("small").textContent = r.ok ? "" : `例）${r.hint}`;
+      el.sumReplies.appendChild(li);
+    });
+    const hasLesson = th.lesson != null;
+    el.btnSumPron.hidden = !hasLesson;
+    el.btnSumQuiz.hidden = !hasLesson;
+    el.talkMain.hidden = true;
+    el.talkSummary.hidden = false;
+    document.body.classList.remove("focus");
+    window.scrollTo(0, 0);
+  }
+
+  el.btnSumHome.addEventListener("click", () => showView("home"));
+  el.btnSumRetry.addEventListener("click", () => startTalk(talk.theme.id));
+  el.btnSumPron.addEventListener("click", () => openPractice(talk.theme.lesson, "sentence", "summary"));
+  el.btnSumQuiz.addEventListener("click", () => openPractice(talk.theme.lesson, "quiz", "summary"));
+
+  // ===== 復習 =====
+  function renderReview() {
+    el.reviewThemes.innerHTML = "";
+    ["中級", "初級"].forEach(level => {
+      const h = document.createElement("h2");
+      h.className = "review-level";
+      h.textContent = level;
+      el.reviewThemes.appendChild(h);
+      THEMES.filter(th => th.level === level).forEach(th => {
+        const card = document.createElement("div");
+        card.className = "card review-card";
+        const head = document.createElement("div");
+        head.className = "tc-head";
+        head.innerHTML = "<b class=\"tc-title\"></b><span class=\"tc-ko\" lang=\"ko\"></span>";
+        head.firstChild.textContent = th.title;
+        head.lastChild.textContent = th.ko;
+        card.appendChild(head);
+        const meta = document.createElement("p");
+        meta.className = "review-meta";
+        const parts = [state.talkDone[th.id] ? "✅ 会話済み" : "会話はまだ"];
+        if (th.lesson != null) {
+          const done = state.completed[th.lesson];
+          parts.push(done ? `クイズ最高 ${done.score}点` : "クイズ未受験");
+          const mada = (state.mada[th.lesson] || []).length;
+          if (mada) parts.push(`「まだ」${mada}語`);
+        }
+        meta.textContent = parts.join("　・　");
+        card.appendChild(meta);
+        const row = document.createElement("div");
+        row.className = "review-actions";
+        const add = (label, fn, primary) => {
+          const b = document.createElement("button");
+          b.type = "button";
+          b.className = primary ? "btn cta" : "btn ghost";
+          b.textContent = label;
+          b.addEventListener("click", fn);
+          row.appendChild(b);
+        };
+        if (th.lesson != null) {
+          add("🐢 単語カード", () => openPractice(th.lesson, "words", "review"), true);
+          add("🔤 単語クイズ", () => openPractice(th.lesson, "quiz", "review"));
+          add("🎙️ 発音チェック", () => openPractice(th.lesson, "sentence", "review"));
+        } else {
+          const det = document.createElement("details");
+          det.className = "expr-box mini";
+          det.innerHTML = "<summary>使える表現を見る</summary><ul class=\"expr-list\"></ul>";
+          th.expressions.forEach(x => {
+            const li = document.createElement("li");
+            li.innerHTML = "<b lang=\"ko\"></b><small></small>";
+            li.firstChild.textContent = x.ko;
+            li.lastChild.textContent = x.ja;
+            det.querySelector("ul").appendChild(li);
+          });
+          card.appendChild(det);
+        }
+        add("💬 会話を練習", () => startTalk(th.id));
+        card.appendChild(row);
+        el.reviewThemes.appendChild(card);
+      });
+    });
+  }
+
+  // ===== テーマごとの練習（単語カード・単語クイズ・発音チェック） =====
+  const QUIZ_POINTS_PER_CORRECT = 2;
+  let quiz = null;          // { items: [{ko, ja, kana, inSentence, review, options[]}], i, answers: [bool], main }
+  let wordIdx = 0;
+  let wordsStudied = false; // この練習で単語カードを最後まで見たか
+  let revealed = new Set(); // 意味を表示したカード
+  let practiceOrigin = "review"; // 練習を終えたら戻る画面（review / summary / home）
+
   const tagLabel = w => (w.review ? "復習（まだ）" : w.inSentence ? "例文の単語" : "関連する新しい単語");
   const setTag = (node, w) => {
     node.textContent = tagLabel(w);
@@ -743,74 +1187,35 @@
   }
 
   function showStep(step) {
-    const practiceTab = document.querySelector('.tab[data-view="practice"]');
-    if (!practiceTab.classList.contains("active")) practiceTab.click();
-    ["Start", "List", "Words", "Sentence", "Quiz", "Score"].forEach(k => {
+    ["Words", "Sentence", "Quiz", "Score"].forEach(k => {
       el[`step${k}`].hidden = step !== k.toLowerCase();
     });
-    document.body.classList.toggle("focus", step === "quiz" || step === "words");
-    window.scrollTo(0, 0);
+    practiceFocus = step === "quiz" || step === "words";
+    showView("practice");
   }
 
-  // ----- スタート画面 -----
-  function goStart() {
-    const s = current();
-    const n = window.SENTENCES.length;
-    const d = fromKey(today());
-    el.startDate.textContent = `${d.getMonth() + 1}月${d.getDate()}日`;
-    el.startIndex.textContent = `${lessonNo() + 1} / ${n}`;
-    el.startKo.textContent = s.ko;
-    el.startJa.textContent = s.ja;
-    const st = streakStatus();
-    el.startStreak.textContent = `🔥 連続 ${st.streak}日`;
-    el.startDone.textContent = state.last === today() ? "✅ 今日の出席 完了" : "今日はまだ未出席";
-    // まだ1つもレッスンを終えていない人には「じっくり」をすすめる
-    el.startBadge.hidden = Object.keys(state.completed).length > 0;
+  function openPractice(lesson, step, origin) {
+    state.idx = lesson;
+    save();
+    practiceOrigin = origin;
     wordsStudied = false;
     revealed = new Set();
+    renderSentence();
     setExpl(false);
     resetRecording();
-    showStep("start");
+    if (step === "words") startWords();
+    else if (step === "quiz") startQuiz();
+    else showStep("sentence");
   }
 
-  function selectLesson(i) {
-    state.idx = i;
-    save();
-    renderSentence();
-    goStart();
+  function leavePractice() {
+    practiceFocus = false;
+    quiz = null;
+    showView(practiceOrigin === "summary" ? "talk" : practiceOrigin);
   }
-  const nextLesson = () => selectLesson((lessonNo() + 1) % window.SENTENCES.length);
 
-  el.btnStartWords.addEventListener("click", () => startWords("sentence"));
-  el.btnStartTalk.addEventListener("click", goSentence);
-  el.btnStartNext.addEventListener("click", nextLesson);
-
-  // ----- レッスン一覧 -----
-  function goList() {
-    el.lessonList.innerHTML = "";
-    window.SENTENCES.forEach((s, i) => {
-      const done = state.completed[i];
-      const li = document.createElement("li");
-      const b = document.createElement("button");
-      b.type = "button";
-      b.className = "lesson-item" + (i === lessonNo() ? " current" : "");
-      b.innerHTML = `<span class="li-no"></span><span class="li-body"><b lang="ko"></b><small></small></span><span class="li-done"></span>`;
-      b.querySelector(".li-no").textContent = i + 1;
-      b.querySelector("b").textContent = s.ko.length > 14 ? s.ko.slice(0, 14) + "…" : s.ko;
-      b.querySelector("small").textContent = `${s.theme}　難易度 ${s.level}`;
-      b.querySelector(".li-done").textContent = done ? `✅ ${done.score}点` : "未完了";
-      b.addEventListener("click", () => selectLesson(i));
-      li.appendChild(b);
-      el.lessonList.appendChild(li);
-    });
-    showStep("list");
-  }
-  el.btnStartList.addEventListener("click", goList);
-  el.btnListBack.addEventListener("click", goStart);
-
-  // ----- じっくり単語練習 -----
-  function startWords(returnTo) {
-    wordsReturn = returnTo;
+  // ----- 単語カード -----
+  function startWords() {
     wordIdx = 0;
     showStep("words");
     renderWord();
@@ -839,9 +1244,7 @@
     el.btnWordPrev.disabled = wordIdx === 0;
     // 意味を一度表示するまで「次へ」は押せない
     el.btnWordNext.disabled = !shown;
-    el.btnWordNext.textContent = wordIdx === words.length - 1
-      ? (wordsReturn === "talk" ? "会話練習に戻る →" : "会話練習へ →")
-      : "次へ →";
+    el.btnWordNext.textContent = wordIdx === words.length - 1 ? "完了 →" : "次へ →";
   }
 
   el.btnReveal.addEventListener("click", () => {
@@ -864,20 +1267,18 @@
   function goNextWord() {
     if (wordIdx < current().words.length - 1) { wordIdx++; renderWord(); return; }
     wordsStudied = true;
-    goSentence();
+    const n = madaList().length;
+    toast(n ? `単語カード完了！「まだ」の ${n} 語はクイズの後に復習します` : "単語カード完了！");
+    leavePractice();
   }
   el.btnWordPrev.addEventListener("click", () => { if (wordIdx > 0) { wordIdx--; renderWord(); } });
   el.btnWordNext.addEventListener("click", () => { if (!el.btnWordNext.disabled) goNextWord(); });
-  el.btnWordsClose.addEventListener("click", () => {
-    if (wordsReturn === "talk") showStep("sentence");
-    else goStart();
-  });
+  el.btnWordsClose.addEventListener("click", leavePractice);
 
-  // ----- 会話練習 -----
-  function goSentence() {
-    showStep("sentence");
-  }
-  el.btnSentenceHome.addEventListener("click", goStart);
+  // ----- 発音チェック -----
+  el.btnSentenceHome.addEventListener("click", leavePractice);
+  el.btnToQuiz.addEventListener("click", startQuiz);
+
   // 「表現を確認」：例文の意味と文法ポイントを日本語で表示（開閉）
   function renderExpl() {
     const e = current().expl;
@@ -899,7 +1300,6 @@
     el.btnExpl.textContent = open ? "📝 解説を閉じる" : "📝 表現を確認";
   }
   el.btnExpl.addEventListener("click", () => setExpl(el.explBox.hidden));
-  el.btnToQuiz.addEventListener("click", startQuiz);
 
   // ----- 関連単語クイズ（例文の単語4語 ＋ 関連する新しい単語6語 ＋「まだ」の復習） -----
   function makeItem(w, words, review) {
@@ -985,8 +1385,8 @@
 
   el.btnSkip.addEventListener("click", () => answer(null, null));
   el.btnQuizNext.addEventListener("click", nextQuestion);
-  // ✕：確認なしで、このレッスンのスタートに戻る（結果は記録しない）
-  el.btnQuizClose.addEventListener("click", () => { quiz = null; goStart(); });
+  // ✕：確認なしで元の画面に戻る（結果は記録しない）
+  el.btnQuizClose.addEventListener("click", leavePractice);
 
   function finishQuiz() {
     const n = quiz.main;
@@ -1016,11 +1416,13 @@
     if (prev != null && score > prev) return { ja: `前回より ${score - prev} 点アップ！この調子で続けよう！`, ko: `지난번보다 ${score - prev}점 올랐어요! 이대로 계속해 봐요!` };
     if (score === 100) return { ja: "全問正解！完璧です。明日もこの調子で！", ko: "만점이에요! 완벽해요. 내일도 이렇게 해 봐요!" };
     if (score >= 70) return { ja: "いい感じ！間違えた単語だけ見直しておこう。", ko: "좋아요! 틀린 단어만 다시 봐 둬요." };
-    return { ja: "大丈夫、ここからです。次は「じっくり単語練習」から始めてみよう！", ko: "괜찮아요, 지금부터예요. 다음에는 '단어 연습'부터 시작해 봐요!" };
+    return { ja: "大丈夫、ここからです。次は「単語カード」から始めてみよう！", ko: "괜찮아요, 지금부터예요. 다음에는 '단어 카드'부터 시작해 봐요!" };
   }
 
   function renderScoreSheet({ correct, n, score, prev, gained }) {
+    const th = themeOfLesson(lessonNo());
     el.stepIcoWords.classList.toggle("done", wordsStudied);
+    el.stepIcoTalk.classList.toggle("done", !!(th && state.talkDone[th.id]));
     el.quizCorrect.textContent = correct;
     el.quizTotal.textContent = n;
     el.vocabScore.textContent = score;
@@ -1053,13 +1455,41 @@
     });
   }
 
-  el.btnScoreHome.addEventListener("click", goStart);
-  el.btnScoreNext.addEventListener("click", nextLesson);
+  el.btnScoreHome.addEventListener("click", leavePractice);
+
+  // ===== 記録：練習時間 =====
+  function renderMinutes() {
+    el.recToday.textContent = Math.floor(secOn(today()) / 60);
+    el.recWeek.textContent = Math.floor(sumSec(7) / 60);
+    el.rec4w.textContent = Math.floor(sumSec(28) / 60);
+    el.weekBars.innerHTML = "";
+    const max = Math.max(state.goal * 60, ...Array.from({ length: 7 }, (_, i) => secOn(addDays(today(), -i))));
+    for (let i = 6; i >= 0; i--) {
+      const k = addDays(today(), -i);
+      const s = secOn(k);
+      const d = document.createElement("div");
+      d.className = "wb" + (i === 0 ? " today" : "");
+      d.innerHTML = `<span class="wb-bar"><i style="height:${Math.round((s / max) * 100)}%"></i></span><small>${dowJa(k)}</small><b>${Math.floor(s / 60)}</b>`;
+      el.weekBars.appendChild(d);
+    }
+  }
+
+  // ===== 設定画面の開閉・目標 =====
+  el.btnSettings.addEventListener("click", () => showView("settings"));
+  el.btnSettingsBack.addEventListener("click", () => showView(prevView === "settings" ? "home" : prevView));
+  document.querySelectorAll('input[name="goal"]').forEach(r => {
+    r.addEventListener("change", () => {
+      state.goal = Number(r.value);
+      save();
+      toast(`1日の目標を ${state.goal} 分にしました`);
+    });
+  });
+  const syncGoal = () => document.querySelectorAll('input[name="goal"]').forEach(r => { r.checked = Number(r.value) === state.goal; });
 
   // ===== 初期表示 =====
   syncRatio();
+  syncGoal();
   renderSentence();
-  renderStreak();
   renderDiagnostics();
-  goStart();
+  showView("home");
 })();
