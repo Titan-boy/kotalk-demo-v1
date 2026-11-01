@@ -13,10 +13,10 @@ let stopReason = "end_turn";
 globalThis.fetch = async (url, init) => {
   sent = { url: String(url), headers: init.headers, body: JSON.parse(init.body) };
   return new Response(JSON.stringify({
-    id: "msg_test", type: "message", role: "assistant", model: "claude-opus-5-5",
+    id: "msg_test", type: "message", role: "assistant", model: "claude-haiku-5-5",
     content: [{ type: "text", text: JSON.stringify(reply) }],
     stop_reason: stopReason, stop_sequence: null, stop_details: null,
-    usage: { input_tokens: 1, output_tokens: 1 }
+    usage: { input_tokens: 1200, output_tokens: 300 }
   }), { status: 200, headers: { "content-type": "application/json", "request-id": "req_test" } });
 };
 
@@ -46,14 +46,14 @@ const res = await worker.fetch(req(sample), env);
 assert.equal(res.status, 200);
 assert.deepEqual(await res.json(), reply);
 assert.match(sent.url, /\/v1\/messages/);
-assert.equal(sent.body.model, "claude-opus-5-5");
-assert.equal(sent.body.fallbacks, "default");
+assert.equal(sent.body.model, "claude-haiku-5-5");
+assert.equal(sent.body.fallbacks, undefined);
 assert.equal(sent.body.output_config.effort, "low");
 assert.equal(sent.body.output_config.format.type, "json_schema");
 assert.equal(sent.body.thinking, undefined);
 assert.match(sent.body.messages[0].content, /<learner_reply>\n쇼핑 하러 가요\n<\/learner_reply>/);
-const beta = sent.headers instanceof Headers ? sent.headers.get("anthropic-beta") : JSON.stringify(sent.headers);
-assert.match(beta, /server-side-fallback-2026-07-01/);
+const beta = sent.headers instanceof Headers ? sent.headers.get("anthropic-beta") : null;
+assert.equal(beta, null);
 // 5) 断られたら 502
 stopReason = "refusal";
 assert.equal((await worker.fetch(req(sample), env)).status, 502);

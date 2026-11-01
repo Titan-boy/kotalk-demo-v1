@@ -214,7 +214,7 @@ audio/sfx/   효과음(correct / wrong / tick)
 - 본문 ②-4 「판정의 한계」(질문에 안 맞는 답도 통과, 내용 판단 불가)와 ③-4 「판정을 서버로 옮길지」를 이 작업으로 진행함
 
 ### 구성
-- `worker/`: Cloudflare Worker. 브라우저 → Worker → Claude API(`claude-opus-5-5`, effort `low`, JSON 형식 고정 출력, 거절 시 자동 대체 모델). API 키는 Worker secret에만 둠
+- `worker/`: Cloudflare Worker. 브라우저 → Worker → Claude API(`claude-haiku-5-5`, effort `low`, JSON 형식 고정 출력). API 키는 Worker secret에만 둠
 - `config.js`: `aiEndpoint`(Worker URL + `/judge`). **비어 있으면 기존 간이 판정 그대로** 동작
 - `app.js`: 답변을 AI에 보내 `ok / almost / ng` 판정 + 일본어 조언 + 고친 문장 + 다른 표현을 표시. 판정 중에는 입력 잠금. 실패·시간 초과(15초) 시 그 답변만 간이 판정으로 처리하고 한 번 안내
 - 설정 화면: 「AI判定」 켜기/끄기(기본 켬), 「AIへの接続を確認する」, 진단 표에 「AI判定」 행. 「このデモについて」에 답변 문장이 Claude로 전송된다는 안내 추가
@@ -225,6 +225,6 @@ audio/sfx/   효과음(correct / wrong / tick)
 3. 녹음 답변: 브라우저 음성 인식이 안 되는 단말(iPhone 일부 등)은 여전히 판정하지 않음. 녹음 자체를 서버 음성 인식으로 보내려면 별도 작업(본문 `TODO(API)`)
 
 ### 결정 필요
-- 모델: 현재 `claude-opus-5-5`(1회 약 1~3엔 추정). `claude-haiku-5-5`로 바꾸면 비용 약 1/40, 응답도 빠름. 실제 답변으로 비교 후 결정 <!-- TODO: 사용자가 직접 채울 부분 -->
+- 모델: 처음부터 `claude-haiku-5-5` 사용 (사용자 결정, 2026-11-01). 1회 약 0.06엔, 매일 20분 사용 시 1인당 월 약 54엔(추정, `worker/README.md`). 판정 품질이 부족하면 Sonnet/Opus로 변경 검토
 - 공개 범위: Worker는 Origin 검사만 함(위조 가능). 학습자에게 넓게 공개할 경우 Cloudflare Rate Limiting·로그인 등 추가 보호 여부 <!-- TODO: 사용자가 직접 채울 부분 -->
 - 학습자 답변을 외부 API로 보내는 것에 대한 안내 수준(수업에서 쓸 경우 학생 동의 등) <!-- TODO: 사용자가 직접 채울 부분 -->
