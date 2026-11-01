@@ -3,14 +3,17 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#1c1c1e">
+  <meta name="theme-color" content="#f5f2ec">
   <title>KoTalk デモ</title>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
   <header class="topbar">
     <div class="brand">KoTalk <span class="badge">DEMO</span></div>
-    <div class="points-pill" aria-live="polite"><span id="pointsTop">0</span> pt</div>
+    <div class="top-right">
+      <div class="points-pill" aria-live="polite"><span id="pointsTop">0</span> pt</div>
+      <button class="icon-btn gear" id="btnSettings" type="button" aria-label="設定">⚙️</button>
+    </div>
   </header>
 
   <div class="inapp-banner" id="inAppBanner" hidden>
@@ -19,41 +22,94 @@
   </div>
 
   <main>
-    <!-- ===== 1. 今日のレッスン ===== -->
-    <!-- 流れ：スタート画面 →（じっくり単語練習 →）会話練習（例文・録音・フィードバック）→ 関連単語クイズ → 採点表 -->
-    <section id="view-practice" class="view active" aria-labelledby="h-practice">
-      <h1 id="h-practice" class="sr-only">今日のレッスン</h1>
+    <!-- ===== ホーム ===== -->
+    <section id="view-home" class="view active" aria-labelledby="h-home">
+      <h1 id="h-home" class="sr-only">ホーム</h1>
+      <div class="hero">
+        <p class="hero-label">今日の練習</p>
+        <p class="hero-time"><b id="todayMin">0</b> 分 / 目標 <span id="goalMin">15</span> 分</p>
+        <div class="hero-bar"><i id="todayBar"></i></div>
+        <div class="hero-chips"><span class="chip" id="chipStreak"></span><span class="chip" id="chipWeek"></span></div>
+        <button class="btn hero-cta" id="btnHeroStart" type="button">練習をはじめる</button>
+        <p class="hero-note" id="heroNote"></p>
+      </div>
 
-      <!-- スタート画面 -->
-      <div class="lesson-step" id="stepStart">
-        <p class="start-date" id="startDate"></p>
-        <h2 class="start-title">今日のレッスン <span class="muted" id="startIndex"></span></h2>
-        <div class="card start-card">
-          <p class="ko-sentence" id="startKo" lang="ko"></p>
-          <p class="ja-translation" id="startJa"></p>
-          <div class="start-meta"><span id="startStreak"></span><span id="startDone"></span></div>
+      <h2 class="serif-h">テーマを選ぶ</h2>
+      <div class="seg" role="tablist" aria-label="レベル">
+        <button class="seg-btn" type="button" role="tab" data-level="初級">初級</button>
+        <button class="seg-btn" type="button" role="tab" data-level="中級">中級</button>
+      </div>
+      <div class="theme-list" id="themeList"></div>
+
+      <h2 class="serif-h">最近の練習</h2>
+      <ul class="recent" id="recentList"></ul>
+    </section>
+
+    <!-- ===== 会話練習（シナリオ） ===== -->
+    <section id="view-talk" class="view" aria-labelledby="talkTitle">
+      <div id="talkMain">
+        <div class="talk-head">
+          <div class="talk-head-text">
+            <h1 class="talk-title"><span id="talkTitle"></span> <small id="talkLevel"></small></h1>
+            <p class="talk-time">残り <span id="talkRemain"></span>・経過 <span id="talkElapsed"></span></p>
+          </div>
+          <button class="btn accent" id="btnTalkEnd" type="button">練習をおわる</button>
         </div>
-        <button class="choice" id="btnStartWords" type="button">
-          <span class="choice-ico">🐢</span>
-          <span class="choice-body"><span class="rec-badge" id="startBadge" hidden>初めての方におすすめ</span><b>じっくり単語練習から</b><small>約5分｜単語10語 → 会話 → クイズ</small></span>
-          <span class="choice-arrow">›</span>
-        </button>
-        <button class="choice primary" id="btnStartTalk" type="button">
-          <span class="choice-ico">⚡</span>
-          <span class="choice-body"><b>すぐに会話練習</b><small>約3分｜例文 → 録音 → クイズ</small></span>
-          <span class="choice-arrow">›</span>
-        </button>
-        <div class="start-links">
-          <button class="btn link" id="btnStartList" type="button">📋 レッスン一覧</button>
-          <button class="btn link" id="btnStartNext" type="button">別のレッスンにする →</button>
+        <p class="talk-partner" id="talkPartner"></p>
+        <label class="check-row"><input type="checkbox" id="autoRead" checked> パートナーの声を自動で読み上げる</label>
+        <details class="expr-box" id="exprBox">
+          <summary>使える表現を見る</summary>
+          <ul class="expr-list" id="exprList"></ul>
+        </details>
+        <div class="chat" id="chatLog" aria-live="polite"></div>
+        <div class="composer" id="composer">
+          <label for="talkInput" class="composer-label">韓国語で返事を書いてください</label>
+          <div class="composer-row">
+            <input id="talkInput" type="text" lang="ko" placeholder="예: 안녕하세요" autocomplete="off" enterkeyhint="send">
+            <button class="icon-btn mic" id="btnTalkMic" type="button" aria-label="音声で入力">🎤</button>
+            <button class="btn send" id="btnTalkSend" type="button" disabled>送る</button>
+          </div>
+          <div class="composer-tools">
+            <button class="btn link" id="btnHint" type="button">💡 ヒントを見る</button>
+            <span class="mic-status" id="micStatus" aria-live="polite"></span>
+          </div>
         </div>
       </div>
 
-      <!-- レッスン一覧 -->
-      <div class="lesson-step" id="stepList" hidden>
-        <div class="step-head"><span class="tag">レッスン一覧</span><button class="btn link" id="btnListBack" type="button">← 戻る</button></div>
-        <ul class="lesson-list" id="lessonList"></ul>
+      <!-- 会話のまとめ -->
+      <div id="talkSummary" hidden>
+        <h1 class="serif-h">おつかれさまでした！</h1>
+        <div class="card sum-card">
+          <p class="sum-theme" id="sumTheme"></p>
+          <div class="sum-stats">
+            <div><b id="sumTime">0</b><small>練習時間</small></div>
+            <div><b id="sumTurns">0</b><small>やりとり</small></div>
+            <div><b id="sumOk">0</b><small>通じた返事</small></div>
+          </div>
+          <div class="reward" id="sumReward" hidden></div>
+        </div>
+        <div class="card">
+          <div class="card-label">あなたの返事</div>
+          <ul class="sum-replies" id="sumReplies"></ul>
+        </div>
+        <div class="sum-actions" id="sumActions">
+          <button class="btn cta block" id="btnSumPron" type="button">🎙️ 今日の例文で発音チェック</button>
+          <button class="btn ghost block" id="btnSumQuiz" type="button">🔤 関連単語クイズ</button>
+          <button class="btn ghost block" id="btnSumRetry" type="button">もう一度この会話を練習する</button>
+          <button class="btn link" id="btnSumHome" type="button">ホームに戻る</button>
+        </div>
       </div>
+    </section>
+
+    <!-- ===== 復習 ===== -->
+    <section id="view-review" class="view" aria-labelledby="h-review">
+      <h1 id="h-review" class="serif-h">復習</h1>
+      <p class="lead">会話テーマの単語と例文を、カード・クイズ・発音チェックで復習します。</p>
+      <div class="review-themes" id="reviewThemes"></div>
+    </section>
+
+    <!-- ===== 単語・クイズ・発音チェック（テーマごとの練習） ===== -->
+    <section id="view-practice" class="view" aria-label="テーマの練習">
 
       <!-- じっくり単語練習（カード形式） -->
       <div class="lesson-step" id="stepWords" hidden>
@@ -107,8 +163,8 @@
       <div class="lesson-step" id="stepScore" hidden>
         <div class="card">
           <div class="steps">
-            <div class="step" id="stepIcoWords"><div class="step-ico">🐢</div><span>単語練習</span></div>
-            <div class="step done"><div class="step-ico">🎙️</div><span>会話練習</span></div>
+            <div class="step" id="stepIcoWords"><div class="step-ico">🐢</div><span>単語カード</span></div>
+            <div class="step" id="stepIcoTalk"><div class="step-ico">💬</div><span>会話練習</span></div>
             <div class="step done"><div class="step-ico">🔤</div><span>単語クイズ</span></div>
             <div class="step now"><div class="step-ico">📊</div><span>採点</span></div>
           </div>
@@ -127,13 +183,12 @@
           <div class="card-label">復習する単語</div>
           <ul class="review-list" id="reviewList"></ul>
         </div>
-        <button class="btn cta block" id="btnScoreHome" type="button">レッスン完了</button>
-        <button class="btn link" id="btnScoreNext" type="button">次のレッスンへ →</button>
+        <button class="btn cta block" id="btnScoreHome" type="button">完了</button>
       </div>
 
       <!-- 会話練習 -->
       <div class="lesson-step" id="stepSentence" hidden>
-      <div class="step-head"><span class="tag">会話練習</span><button class="btn link" id="btnSentenceHome" type="button">← スタートに戻る</button></div>
+      <div class="step-head"><span class="tag">発音チェック</span><button class="btn link" id="btnSentenceHome" type="button">← 戻る</button></div>
       <div class="card sentence-card">
         <div class="card-label">今日の例文 <span class="muted" id="sentenceIndex"></span></div>
         <p class="ko-sentence" id="koSentence" lang="ko"></p>
@@ -186,9 +241,15 @@
       </div>
     </section>
 
-    <!-- ===== 2. 出席・ポイント ===== -->
-    <section id="view-streak" class="view" aria-labelledby="h-streak">
-      <h1 id="h-streak" class="section-title">出席・ポイント</h1>
+    <!-- ===== 記録（出席・ポイント） ===== -->
+    <section id="view-record" class="view" aria-labelledby="h-record">
+      <h1 id="h-record" class="serif-h">記録</h1>
+
+      <div class="card">
+        <div class="card-label">練習時間</div>
+        <div class="minutes-row"><div><b id="recToday">0</b><small>今日（分）</small></div><div><b id="recWeek">0</b><small>直近7日（分）</small></div><div><b id="rec4w">0</b><small>4週間（分）</small></div></div>
+        <div class="week-bars" id="weekBars"></div>
+      </div>
 
       <div class="stats">
         <div class="stat"><div class="stat-num" id="streakNum">0</div><div class="stat-label">連続出席（日）</div></div>
@@ -206,8 +267,8 @@
       <div class="card">
         <div class="card-label">ルール</div>
         <ul class="rules">
+          <li>1日1回、会話練習を最後まで終えると出席（+10pt）</li>
           <li>関連単語クイズの正解1問につき +2pt（1日1回）</li>
-          <li>1日1回、文章を録音して評価を受けると出席（+10pt）</li>
           <li>7日連続ごとにボーナス +30pt</li>
           <li>休息券は週1枚（月曜リセット）。1日だけ休んでも、翌日練習すれば連続記録が自動で守られます</li>
         </ul>
@@ -236,7 +297,16 @@
 
     <!-- ===== 設定 ===== -->
     <section id="view-settings" class="view" aria-labelledby="h-settings">
-      <h1 id="h-settings" class="section-title">設定</h1>
+      <div class="step-head"><h1 id="h-settings" class="serif-h">設定</h1><button class="btn link" id="btnSettingsBack" type="button">← 戻る</button></div>
+      <div class="card">
+        <div class="card-label">1日の目標</div>
+        <div class="goal-row" role="radiogroup" aria-label="1日の目標">
+          <label><input type="radio" name="goal" value="5"> 5分</label>
+          <label><input type="radio" name="goal" value="10"> 10分</label>
+          <label><input type="radio" name="goal" value="15"> 15分</label>
+          <label><input type="radio" name="goal" value="30"> 30分</label>
+        </div>
+      </div>
       <div class="card">
         <div class="card-label">フィードバックの言語バランス</div>
         <label class="radio-card">
@@ -251,7 +321,7 @@
       <div class="card">
         <div class="card-label">効果音</div>
         <label class="switch-row">
-          <span>クイズの正解・不正解音、録音のカウント音</span>
+          <span>クイズの正解・不正解音、録音のカウント音、会話で通じたときの音</span>
           <input type="checkbox" id="sfxToggle" checked>
         </label>
       </div>
@@ -263,20 +333,21 @@
       </div>
       <div class="card">
         <div class="card-label">このデモについて</div>
-        <p class="hint">発音評価はダミー点数です。データはこの端末のブラウザにのみ保存されます。</p>
+        <p class="hint">会話は決まったシナリオで進みます（自由な会話ではありません）。発音評価はダミー点数です。データはこの端末のブラウザにのみ保存されます。</p>
       </div>
     </section>
   </main>
 
   <nav class="tabbar" aria-label="メニュー">
-    <button class="tab active" data-view="practice" type="button"><span>📘</span>レッスン</button>
-    <button class="tab" data-view="streak" type="button"><span>🔥</span>出席</button>
-    <button class="tab" data-view="settings" type="button"><span>⚙️</span>設定</button>
+    <button class="tab active" data-view="home" type="button"><span>🏠</span>ホーム</button>
+    <button class="tab" data-view="review" type="button"><span>🗂️</span>復習</button>
+    <button class="tab" data-view="record" type="button"><span>📅</span>記録</button>
   </nav>
 
   <div class="toast" id="toast" role="status" hidden></div>
 
   <script src="data.js"></script>
+  <script src="themes.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
