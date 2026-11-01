@@ -38,17 +38,17 @@ export default {
 
     const client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY, maxRetries: 1, timeout: 20_000 });
     try {
-      const response = await client.beta.messages.create({
+      const response = await client.messages.create({
         model: MODEL,
         max_tokens: 4000,
         // 短い判定なので考える量は少なめにして、返事を速くする
         output_config: { effort: "low", format: { type: "json_schema", schema: RESULT_SCHEMA } },
-        // 安全分類で断られたときは、Anthropic 推奨のモデルで自動的にやり直す
-        betas: ["server-side-fallback-2026-07-01"],
-        fallbacks: "default",
         system: SYSTEM_PROMPT,
         messages: [{ role: "user", content: buildUserMessage(input) }]
       });
+      // 費用の確認用（`npx wrangler tail` で見られる）。返事の文は記録しない
+      console.log(JSON.stringify({ model: response.model, input_tokens: response.usage.input_tokens, output_tokens: response.usage.output_tokens }));
+      // Haiku には自動のやり直し先がないので、断られたらブラウザ側の簡易判定に任せる
       if (response.stop_reason === "refusal") return json({ error: "refused" }, 502, origin);
       const text = response.content.filter(b => b.type === "text").map(b => b.text).join("");
       const result = JSON.parse(text);

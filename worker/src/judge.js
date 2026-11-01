@@ -1,7 +1,8 @@
 // 会話の返事を Claude に判定してもらうための、プロンプトと入力チェック
 // （Worker 本体から使う。ローカルの確認スクリプトからも読み込める）
 
-export const MODEL = "claude-opus-5-5";
+// 短い判定を大量に行うので、速くて安い Haiku を使う（Opus の約 1/40 の単価）
+export const MODEL = "claude-haiku-5-5";
 
 // Claude が返す JSON の形
 export const RESULT_SCHEMA = {
