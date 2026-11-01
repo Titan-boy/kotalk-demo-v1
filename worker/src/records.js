@@ -19,7 +19,7 @@ export const REGIONS = [
 ];
 const TYPES = { student: "学生", general: "一般" };
 const VERDICTS = ["ok", "almost", "ng", ""];
-const JUDGED_BY = ["ai", "rule", "none"];
+const JUDGED_BY = ["ai", "rule", "branch", "none"];
 
 const str = (v, max) => (typeof v === "string" ? v.trim().slice(0, max) : "");
 const int = (v, min, max) => (Number.isFinite(v) ? Math.max(min, Math.min(max, Math.round(v))) : null);
@@ -88,12 +88,12 @@ export async function saveReply(env, body) {
   const verdict = VERDICTS.includes(body.verdict) ? body.verdict : "";
   const judgedBy = JUDGED_BY.includes(body.judged_by) ? body.judged_by : "none";
   const r = await env.DB.prepare(
-    `INSERT INTO replies (created_at, device_token, theme, level, turn_no, try_no, partner_ko, reply_ko, voice, verdict, judged_by, feedback_ja, corrected_ko)
-     SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13
+    `INSERT INTO replies (created_at, device_token, theme, level, turn_no, try_no, partner_ko, reply_ko, voice, verdict, judged_by, feedback_ja, corrected_ko, branch_id)
+     SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14
      WHERE EXISTS (SELECT 1 FROM learners WHERE device_token = ?2)`
   ).bind(now(), token, str(body.theme, 40), str(body.level, 10), int(body.turn_no, 0, 50), int(body.try_no, 1, 20),
     str(body.partner_ko, 300), str(body.reply_ko, 300), body.voice === true ? 1 : 0, verdict, judgedBy,
-    str(body.feedback_ja, 400), str(body.corrected_ko, 300)).run();
+    str(body.feedback_ja, 400), str(body.corrected_ko, 300), str(body.branch_id, 40)).run();
   return r.meta && r.meta.changes ? { status: 200, data: { ok: true } } : { status: 404, data: { error: "not_registered" } };
 }
 
@@ -157,7 +157,7 @@ export async function exportCsv(env, url) {
   const learnerCols = "l.class_code, l.learner_type, l.learner_id, l.research_ok, l.gender, l.age_group, l.experience, l.region";
   let sql;
   if (table === "learners") sql = `SELECT ${learnerCols}, l.registered_at, l.updated_at FROM learners l WHERE ${where} ORDER BY l.registered_at`;
-  if (table === "replies") sql = `SELECT ${learnerCols}, r.created_at, r.theme, r.level, r.turn_no, r.try_no, r.partner_ko, r.reply_ko, r.voice, r.verdict, r.judged_by, r.feedback_ja, r.corrected_ko FROM replies r JOIN learners l ON l.device_token = r.device_token WHERE ${where} ORDER BY r.created_at`;
+  if (table === "replies") sql = `SELECT ${learnerCols}, r.created_at, r.theme, r.level, r.turn_no, r.try_no, r.partner_ko, r.reply_ko, r.voice, r.verdict, r.judged_by, r.branch_id, r.feedback_ja, r.corrected_ko FROM replies r JOIN learners l ON l.device_token = r.device_token WHERE ${where} ORDER BY r.created_at`;
   if (table === "sessions") sql = `SELECT ${learnerCols}, s.created_at, s.theme, s.level, s.seconds, s.turns, s.ok_count, s.finished FROM sessions s JOIN learners l ON l.device_token = s.device_token WHERE ${where} ORDER BY s.created_at`;
   const { results } = await env.DB.prepare(sql).bind(code).all();
 
@@ -174,13 +174,13 @@ export async function exportCsv(env, url) {
       GENDERS[r.gender] || "", AGE_GROUPS[r.age_group] || "", EXPERIENCES[r.experience] || "", r.region || ""];
     if (table === "learners") rows.push([...base, r.registered_at, r.updated_at]);
     if (table === "replies") rows.push([...base, r.created_at, r.theme, r.level, r.turn_no, r.try_no, r.partner_ko, r.reply_ko,
-      r.voice ? "録音" : "文字", r.verdict, r.judged_by, r.feedback_ja, r.corrected_ko]);
+      r.voice ? "声" : "文字", r.verdict, r.judged_by, r.branch_id, r.feedback_ja, r.corrected_ko]);
     if (table === "sessions") rows.push([...base, r.created_at, r.theme, r.level, r.seconds, r.turns, r.ok_count, r.finished ? "最後まで" : "途中"]);
   }
   const head = ["クラス", "区分", research ? "仮ID" : "学籍番号/ニックネーム", "研究への同意", "性別", "年代", "学習歴", "地域"];
   const header = {
     learners: [...head, "登録日時(UTC)", "更新日時(UTC)"],
-    replies: [...head, "日時(UTC)", "テーマ", "レベル", "ターン", "何回目", "相手のセリフ", "返事", "入力", "判定", "判定方法", "AIの助言", "直した文"],
+    replies: [...head, "日時(UTC)", "テーマ", "レベル", "ターン", "何回目", "相手のセリフ", "返事", "入力", "判定", "判定方法", "分かれ道", "AIの助言", "直した文"],
     sessions: [...head, "日時(UTC)", "テーマ", "レベル", "練習秒数", "やりとり数", "通じた数", "終了"]
   }[table];
   return { csv: toCsv(header, rows), filename: `kotalk-${code}-${table}${research ? "-research" : ""}.csv` };

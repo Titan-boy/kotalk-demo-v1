@@ -81,6 +81,7 @@ audio/words/ 単語音声 mp3（ElevenLabs 生成、{レッスン}-{番号}.mp3�
 audio/talk/  会話パートナーの音声 mp3（ElevenLabs 生成、{テーマ}-{番号}.mp3）
 audio/sfx/   効果音 mp3（ElevenLabs 生成：correct＝正解、wrong＝不正解）
 app.js       ロジック（会話・AI判定の呼び出し・録音返事・単語カード・クイズ・出席・ポイント）
+branches.js  会話の分かれ道（予想される返事ごとの相手の応答と、話を学習の範囲に戻す応答。8テーマ・224通り）
 config.js    公開してよい設定（サーバーの URL、同意文に入れる管理者・保存期間など）。APIキー・合言葉は書かない
 docs/data-management-ja.md  学習記録の収集・管理方法（倫理審査用の下書き）
 worker/      AI判定・学習記録のサーバー（Cloudflare Worker + D1。Claude API キーはここの secret にだけ置く）

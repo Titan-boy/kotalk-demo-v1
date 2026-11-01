@@ -88,6 +88,11 @@ assert.equal(csv.trim().split("\r\n").length, 1);
 csv = await (await get("/export?class=TU-KR2026A&table=learners&key=teacher-secret-key")).text();
 assert.match(csv, /TU-KR2026A,学生,C1SB1234,なし,,,,,/);
 
+// 分かれ道の記録（判定方法 branch と、当たった分かれ道の id）
+assert.equal((await post("/records/reply", { device_token: tokS, ...reply, verdict: "almost", judged_by: "branch", branch_id: "pharmacy", reply_ko: "약국이 어디에 있어요?" })).status, 200);
+csv = await (await get("/export?class=TU-KR2026A&table=replies&key=teacher-secret-key")).text();
+assert.match(csv, /약국이 어디에 있어요\?,文字,almost,branch,pharmacy,/);
+
 // 本人による削除
 assert.equal((await post("/records/delete", { device_token: tokG })).status, 200);
 const left = env.DB.raw.prepare("SELECT (SELECT COUNT(*) FROM learners WHERE device_token = ?) a, (SELECT COUNT(*) FROM replies WHERE device_token = ?) b, (SELECT COUNT(*) FROM sessions WHERE device_token = ?) c").get(tokG, tokG, tokG);
