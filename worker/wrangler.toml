@@ -1,0 +1,10 @@
+# KoTalk の会話判定を Claude API に中継する Cloudflare Worker
+# APIキーはここに書かず、`npx wrangler secret put ANTHROPIC_API_KEY` で登録する
+name = "kotalk-judge"
+main = "src/index.js"
+compatibility_date = "2026-10-01"
+compatibility_flags = ["nodejs_compat"]
+
+[vars]
+# この URL から開いたページだけが使える（カンマ区切りで複数可）
+ALLOWED_ORIGINS = "https://titan-boy.github.io,http://localhost:8000,http://localhost:8765"

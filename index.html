@@ -291,6 +291,15 @@
         </label>
       </div>
       <div class="card">
+        <div class="card-label">AI判定</div>
+        <label class="switch-row">
+          <span>会話の返事をAIが判定し、日本語でアドバイスします。用意した答えと言い方が違っても、意味が通じれば「通じた」になります。</span>
+          <input type="checkbox" id="aiToggle" checked>
+        </label>
+        <p class="hint" id="aiStatus"></p>
+        <button class="btn ghost" id="btnAiTest" type="button" hidden>AIへの接続を確認する</button>
+      </div>
+      <div class="card">
         <div class="card-label">効果音</div>
         <label class="switch-row">
           <span>クイズの正解・不正解音、会話で通じたときの音</span>
@@ -306,7 +315,7 @@
       <div class="card">
         <div class="card-label">このデモについて</div>
         <p class="hint">バージョン：<b id="appVersion">__VERSION__</b>（画面が古いときは、この表示が最新の更新と違います）</p>
-        <p class="hint">会話は決まったシナリオで進みます（自由な会話ではありません）。データはこの端末のブラウザにのみ保存されます。</p>
+        <p class="hint">会話は決まったシナリオで進みます（自由な会話ではありません）。AI判定がオンのときは、会話の返事の文（韓国語）がAI（Claude）に送られます。データはこの端末のブラウザにのみ保存されます。</p>
       </div>
     </section>
   </main>
@@ -319,6 +328,7 @@
 
   <div class="toast" id="toast" role="status" hidden></div>
 
+  <script src="config.js?v=__VERSION__"></script>
   <script src="data.js?v=__VERSION__"></script>
   <script src="themes.js?v=__VERSION__"></script>
   <script src="app.js?v=__VERSION__"></script>
