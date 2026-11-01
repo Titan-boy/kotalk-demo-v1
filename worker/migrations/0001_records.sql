@@ -29,9 +29,10 @@ CREATE TABLE IF NOT EXISTS replies (
   reply_ko TEXT,
   voice INTEGER NOT NULL DEFAULT 0,
   verdict TEXT,          -- ok / almost / ng（AI）、ok / ng（簡易判定）、空＝判定なし（文字起こし不可の録音）
-  judged_by TEXT,        -- ai / rule / none
+  judged_by TEXT,        -- ai / rule / branch（分かれ道シナリオ） / none
   feedback_ja TEXT,
-  corrected_ko TEXT
+  corrected_ko TEXT,
+  branch_id TEXT         -- 当たった分かれ道（branches.js の id）。空＝決まった流れ・AI・簡易判定
 );
 CREATE INDEX IF NOT EXISTS idx_replies_token ON replies (device_token);
 

@@ -689,11 +689,90 @@
   const partnerAudio = new Audio();
   const lineAudio = (th, n) => `audio/talk/${th.id}-${n}.mp3`;
 
-  function playLine(src) {
+  // 相手の音声は順番に流す（分かれ道の受け止め → 次のセリフ、が重ならないように）
+  let lineQueue = [];
+  function startLine(src) {
     partnerAudio.pause();
     partnerAudio.src = src;
     const p = partnerAudio.play();
-    if (p && p.catch) p.catch(() => {});
+    if (p && p.catch) p.catch(() => playNextLine());
+  }
+  function playNextLine() {
+    const next = lineQueue.shift();
+    if (next) startLine(next);
+  }
+  partnerAudio.addEventListener("ended", playNextLine);
+  partnerAudio.addEventListener("error", playNextLine);
+  // 「🔊 聞く」を押したとき：今すぐ流す
+  function playLine(src) {
+    lineQueue = [];
+    startLine(src);
+  }
+  // 自動で読み上げるとき：前の音声が終わってから流す
+  function queueLine(src) {
+    if (!partnerAudio.paused && !partnerAudio.ended) lineQueue.push(src);
+    else startLine(src);
+  }
+  function stopLines() {
+    lineQueue = [];
+    partnerAudio.pause();
+  }
+
+  // ===== 分かれ道シナリオ（branches.js） =====
+  // 予想される返事ごとに相手の応答を用意し、外れた話題は学習の範囲へ戻す
+  const BR = window.BRANCHES || { audio: false, themes: {} };
+  const branchTurn = (th, n) => {
+    const t = BR.themes[th.id];
+    return t && t.turns ? t.turns[n] : null;
+  };
+  const branchAudio = (th, n, id) => (BR.audio ? `audio/talk/b/${th.id}-${n}-${id}.mp3` : null);
+  const unclearLine = th => (BR.themes[th.id] && BR.themes[th.id].unclear) || null;
+  const unclearAudio = th => (BR.audio ? `audio/talk/b/${th.id}-unclear.mp3` : null);
+
+  // 1文字違いまでなら同じとみなす（音声認識の聞き間違い・打ち間違い用）
+  function within1(a, b) {
+    if (Math.abs(a.length - b.length) > 1) return false;
+    let i = 0, j = 0, diff = 0;
+    while (i < a.length && j < b.length) {
+      if (a[i] === b[j]) { i++; j++; continue; }
+      if (++diff > 1) return false;
+      if (a.length > b.length) i++;
+      else if (a.length < b.length) j++;
+      else { i++; j++; }
+    }
+    return diff + (a.length - i) + (b.length - j) <= 1;
+  }
+  function kwHit(n, kw, fuzzy) {
+    if (!kw) return false;
+    if (n.includes(kw)) return true;
+    if (!fuzzy || kw.length < 3) return false;
+    for (let len = kw.length - 1; len <= kw.length + 1; len++) {
+      for (let i = 0; i + len <= n.length; i++) if (within1(n.slice(i, i + len), kw)) return true;
+    }
+    return false;
+  }
+  // どの分かれ道に当たるか（当たらなければ null。決まった流れのキーワードが優先される場合も null）
+  function matchBranch(th, n, text) {
+    const tb = branchTurn(th, n);
+    if (!tb) return null;
+    const turn = th.turns[n];
+    const t = norm(text).toLowerCase();
+    const best = fuzzy => {
+      for (const weakPass of [false, true]) {
+        let hit = null, len = 0;
+        tb.branches.filter(b => !!b.weak === weakPass).forEach(b => b.kw.forEach(k => {
+          const kk = norm(k).toLowerCase();
+          if (kk.length > len && kwHit(t, kk, fuzzy)) { hit = b; len = kk.length; }
+        }));
+        if (hit) return hit;
+      }
+      return null;
+    };
+    const mainExact = understood(text, turn.kw);
+    const exact = best(false);
+    if (exact) return turn.require && mainExact && exact.kind === "redirect" ? null : exact;
+    if (mainExact) return null;
+    return best(true);
   }
 
   // 空白・記号を無視して、キーワードのどれかが入っていれば「通じた」
@@ -910,12 +989,12 @@
     if (!RECORDS_ON || !recRegistered()) return;
     postApi(path, { device_token: state.records.token, ...data }, true).catch(() => {});
   }
-  function logReply(turn, turnNo, tryNo, text, voice, verdict, judgedBy, ai) {
+  function logReply(turn, turnNo, tryNo, text, voice, verdict, judgedBy, ai, branchId) {
     sendRecord("/records/reply", {
       theme: talk.theme.title, level: talk.theme.level, turn_no: turnNo, try_no: tryNo,
       partner_ko: turn.ko, reply_ko: text || "", voice: !!voice,
       verdict, judged_by: judgedBy,
-      feedback_ja: ai ? ai.feedback_ja : "", corrected_ko: ai ? ai.corrected_ko : ""
+      feedback_ja: ai ? ai.feedback_ja : "", corrected_ko: ai ? ai.corrected_ko : "", branch_id: branchId || ""
     });
   }
 
@@ -1011,6 +1090,7 @@
   function startTalk(id) {
     // 学習記録を使う設定で、まだ登録するか決めていなければ、先に登録画面を出す
     if (RECORDS_ON && !state.records) { openConsent(id); return; }
+    stopLines();
     if (talkRec) stopTalkRec(true);
     const th = themeById(id);
     talk = { theme: th, i: 0, tries: 0, sec: 0, ok: 0, replies: [], done: false, finished: false };
@@ -1081,14 +1161,18 @@
   function partnerSay(n) {
     const th = talk.theme;
     const line = n < th.turns.length ? th.turns[n] : th.close;
-    const src = lineAudio(th, n + 1);
+    partnerSpeak(line, lineAudio(th, n + 1));
+  }
+
+  // 相手のセリフを表示して読み上げる（音声ファイルが無いセリフは文字だけ）
+  function partnerSpeak(line, src) {
     addBubble("partner", div => {
-      div.innerHTML = "<p class=\"b-ko\" lang=\"ko\"></p><p class=\"b-ja\"></p><button class=\"b-listen\" type=\"button\">🔊 聞く</button>";
+      div.innerHTML = "<p class=\"b-ko\" lang=\"ko\"></p><p class=\"b-ja\"></p>" + (src ? "<button class=\"b-listen\" type=\"button\">🔊 聞く</button>" : "");
       div.querySelector(".b-ko").textContent = line.ko;
       div.querySelector(".b-ja").textContent = line.ja;
-      div.querySelector(".b-listen").addEventListener("click", () => playLine(src));
+      if (src) div.querySelector(".b-listen").addEventListener("click", () => playLine(src));
     });
-    if (el.autoRead.checked) playLine(src);
+    if (src && el.autoRead.checked) queueLine(src);
   }
 
   function showHint(turn, note) {
@@ -1162,6 +1246,12 @@
       return;
     }
 
+    // 分かれ道：予想した返事なら、相手がそれに合わせて答える（AI は使わない）
+    if (hasHangul(text)) {
+      const b = matchBranch(talk.theme, turnNo, text);
+      if (b) { handleBranch(b, turn, turnNo, text, voice, audioUrl, mark, bubble); return; }
+    }
+
     // AI判定（ハングルを含む返事だけ。ひらがなだけ等は簡易判定のヒントで足りる）
     let ai = null;
     if (hasHangul(text) && aiReady()) {
@@ -1190,6 +1280,7 @@
     bubble.classList.toggle("ok", ok);
     talk.replies.push({ ko: text, ok, hint: (ai && ai.better_ko) || turn.hint.ko, turn: turnNo, audio: audioUrl, ai: !!ai });
     logReply(turn, turnNo, talk.tries + 1, text, voice, ai ? ai.verdict : ok ? "ok" : "ng", ai ? "ai" : "rule", ai);
+    const tb = branchTurn(talk.theme, turnNo);
 
     if (ok) {
       sfx.correct();
@@ -1202,6 +1293,8 @@
           div.querySelector(".b-ko").textContent = turn.hint.ko;
         });
       }
+      // 予想外でも通じる返事は、相手がひとこと受け止めてから次へ
+      if (!exact && !turn.require && tb && tb.fallback) partnerSpeak(tb.fallback, branchAudio(talk.theme, turnNo, "fallback"));
       nextTurn();
       return;
     }
@@ -1216,22 +1309,70 @@
     }
     if (!hasHangul(text)) {
       showHint(turn, "韓国語（ハングル）で書いてみましょう。");
-    } else if (talk.tries >= 2) {
+      return;
+    }
+    if (talk.tries >= 3) {
       showHint(turn, "この言い方も覚えておきましょう。会話は先に進みます。");
       nextTurn();
-    } else {
-      showHint(turn, turn.require && naturalReply(text, turn)
-        ? (turn.requireNote || "韓国語としては通じますが、この場面では今日の表現を使ってみましょう。")
-        : "相手にうまく伝わらなかったようです。ヒントを見てもう一度どうぞ。");
+      return;
+    }
+    const natural = naturalReply(text, turn);
+    if (natural && turn.require) {
+      // 決まった流れから外れた返事：相手が話を戻す（2回目は日本語で前提を説明）
+      if (talk.tries === 1 && tb && tb.fallback) partnerSpeak(tb.fallback, branchAudio(talk.theme, turnNo, "fallback"));
+      else showHint(turn, turn.requireNote || "韓国語としては通じますが、この場面では今日の表現を使ってみましょう。");
+      return;
+    }
+    // 意味が取りにくい返事：相手が聞き返す（2回目はヒント）
+    const uc = unclearLine(talk.theme);
+    if (talk.tries === 1 && uc) partnerSpeak(uc, unclearAudio(talk.theme));
+    else showHint(turn, "相手にうまく伝わらなかったようです。ヒントを見てもう一度どうぞ。");
+  }
+
+  // 動作確認用（ブラウザのコンソールや自動テストから、分かれ道の当たり方を確かめる）
+  window.KOTALK_DEBUG = { matchBranch: (themeId, n, text) => {
+    const b = matchBranch(THEMES.find(t => t.id === themeId), n, text);
+    return b ? b.id : null;
+  } };
+
+  // 分かれ道に当たったとき
+  function handleBranch(b, turn, turnNo, text, voice, audioUrl, mark, bubble) {
+    const ok = b.kind === "ok";
+    mark.textContent = ok ? "✓ 通じました" : "💬 通じました（話を戻します）";
+    bubble.classList.toggle("ok", ok);
+    talk.replies.push({ ko: text, ok, hint: turn.hint.ko, turn: turnNo, audio: audioUrl, branch: b.id });
+    logReply(turn, turnNo, talk.tries + 1, text, voice, ok ? "ok" : "almost", "branch", null, b.id);
+    const src = branchAudio(talk.theme, turnNo, b.id);
+    if (ok) {
+      sfx.correct();
+      talk.ok++;
+      if (b.reply) partnerSpeak(b.reply, src);
+      if (typeof b.goto === "number") {
+        // reply がそのターンの質問になっている（例：体調が悪い → 今日は大丈夫？）
+        talk.i = b.goto - 1;
+        nextTurn({ silent: true });
+      } else {
+        nextTurn({ silent: b.next === "replace" && !!b.reply });
+      }
+      return;
+    }
+    // 話題がそれた返事：相手が答えたうえで、学習の範囲に話を戻す（同じターンにとどまる）
+    talk.tries++;
+    if (b.reply) partnerSpeak(b.reply, src);
+    if (talk.tries >= 3) {
+      showHint(turn, "この場面で練習したい言い方です。会話は先に進みます。");
+      nextTurn();
     }
   }
 
-  function nextTurn() {
+  // silent: 相手の次のセリフ（または最後のあいさつ）は分かれ道の応答がすでに言ったので、表示しない
+  function nextTurn(opts) {
+    const silent = !!(opts && opts.silent);
     talk.i++;
     talk.tries = 0;
     setTimeout(() => {
       if (!talk || talk.done) return;
-      partnerSay(talk.i);
+      if (!silent) partnerSay(talk.i);
       if (talk.i >= talk.theme.turns.length) {
         // 最後のあいさつまで来たら会話完了
         talk.finished = true;
@@ -1326,7 +1467,7 @@
       return;
     }
     sfx.unlock();
-    partnerAudio.pause();
+    stopLines();
     const tr = { rec: null, stream: null, start: Date.now(), timer: null, sr: null, finals: [], interim: "", srError: "", restarts: 0, stopping: false, srOnly: false };
     // 文字起こしは、タップの操作の中ですぐ始める（対応端末のみ。失敗しても録音は続ける）
     if (SR) {
@@ -1444,7 +1585,7 @@
   function finishTalk() {
     if (!talk || talk.done) return;
     talk.done = true;
-    partnerAudio.pause();
+    stopLines();
     if (talkRec) stopTalkRec(true);
     const th = talk.theme;
     if (talk.sec > 0 || talk.replies.length) {
