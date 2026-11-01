@@ -7,6 +7,9 @@
   const STREAK_BONUS = 30;
   const EXCHANGE_COST = 300;
   const STORAGE_KEY = "kotalk-demo-v1";
+  // AI判定の接続先（config.js で設定。空なら、これまでの簡易判定〔文末・キーワード〕だけで動く）
+  const AI_ENDPOINT = ((window.KOTALK_CONFIG || {}).aiEndpoint || "").trim();
+  const AI_TIMEOUT_MS = 15000;
 
   // ===== 状態（デモのため localStorage に保存） =====
   // TODO(API): 本番ではユーザーの出席・ポイントはサーバー側で管理する
@@ -29,7 +32,8 @@
     practice: {},        // 練習時間 { "YYYY-MM-DD": 秒 }
     sessions: [],        // 最近の練習 [{ theme, date, sec, ok, turns }]
     level: "中級",        // ホームで選んでいるレベル
-    talkDone: {}         // 会話を終えたテーマ { themeId: { date, ok, turns } }
+    talkDone: {},        // 会話を終えたテーマ { themeId: { date, ok, turns } }
+    ai: true             // 会話の返事を AI（Claude）で判定する
   });
 
   let state = load();
@@ -158,7 +162,7 @@
     toast: $("toast"),
     inAppBanner: $("inAppBanner"), btnCopyUrl: $("btnCopyUrl"), ttsHelp: $("ttsHelp"),
     diag: $("diag"), diagUa: $("diagUa"),
-    sfxToggle: $("sfxToggle"),
+    sfxToggle: $("sfxToggle"), aiToggle: $("aiToggle"), aiStatus: $("aiStatus"), btnAiTest: $("btnAiTest"),
     stepWords: $("stepWords"),
     stepQuiz: $("stepQuiz"), stepScore: $("stepScore"), stepSentence: $("stepSentence"),
     btnWordsClose: $("btnWordsClose"), wordsBar: $("wordsBar"), wordTag: $("wordTag"),
@@ -401,6 +405,7 @@
       ["マイク機能", HAS_GUM ? "○" : (IS_IOS && window.isSecureContext ? "×（ロックダウンモードの可能性）" : "×")],
       ["マイクの権限", micPermLabel()],
       ["録音方式", HAS_MR ? "MediaRecorder" : HAS_WEBAUDIO ? "WAV（互換モード）" : "×"],
+      ["AI判定", !AI_ENDPOINT ? "未設定（簡易判定）" : state.ai !== false ? "オン" : "オフ"],
       ["音声読み上げ", mark(HAS_TTS)],
       ["韓国語の読み上げ音声", HAS_TTS ? `${koVoices().length} 件` : "×"]
     ];
@@ -506,7 +511,44 @@
     if (state.sfx) { sfx.unlock(); sfx.correct(); }
   });
 
+  // AI判定のオン・オフと接続の確認
+  function renderAiStatus() {
+    el.aiToggle.checked = state.ai !== false;
+    el.aiToggle.disabled = !AI_ENDPOINT;
+    el.btnAiTest.hidden = !AI_ENDPOINT;
+    el.aiStatus.textContent = !AI_ENDPOINT
+      ? "AIの接続先がまだ設定されていません。今は簡易判定（文末・キーワード）で確認しています。"
+      : state.ai !== false
+        ? "オン：返事の文をAI（Claude）に送って判定します。"
+        : "オフ：簡易判定（文末・キーワード）で確認します。";
+  }
+  el.aiToggle.addEventListener("change", () => {
+    state.ai = el.aiToggle.checked;
+    save();
+    renderAiStatus();
+    renderDiagnostics();
+  });
+  el.btnAiTest.addEventListener("click", async () => {
+    el.btnAiTest.disabled = true;
+    el.aiStatus.textContent = "接続を確認しています…";
+    try {
+      const r = await callAi({
+        theme: "接続テスト", level: "初級", partner: "민지（韓国人の友達）", voice: false, history: [],
+        turn: { ko: "이름이 뭐예요?", ja: "お名前は？", hint_ko: "저는 다나카예요.", hint_ja: "名前を言いましょう。", require: false, keywords: [] },
+        reply: "저는 다나카예요."
+      });
+      renderAiStatus();
+      toast(`AIに接続できました（判定：${r.verdict}）`);
+    } catch (e) {
+      renderAiStatus();
+      el.aiStatus.textContent += " ※ 接続できませんでした。時間をおいて試すか、管理者に連絡してください。";
+    } finally {
+      el.btnAiTest.disabled = false;
+    }
+  });
+
   function syncRatio() {
+    renderAiStatus();
     el.sfxToggle.checked = state.sfx !== false;
     document.querySelectorAll('input[name="ratio"]').forEach(r => { r.checked = r.value === state.ratio; });
   }
@@ -648,6 +690,95 @@
     return ENDING.test(n) || /^(네|예|응|아니요|아뇨)/.test(n);
   }
 
+  // ===== AI判定（Claude。APIキーを持つ Worker を経由する：worker/） =====
+  // 接続先は設定値の AI_ENDPOINT（config.js）。
+  const aiReady = () => !!AI_ENDPOINT && state.ai !== false;
+
+  async function callAi(payload) {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), AI_TIMEOUT_MS);
+    try {
+      const res = await fetch(AI_ENDPOINT, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+        signal: ctrl.signal
+      });
+      if (!res.ok) throw new Error(`AI ${res.status}`);
+      const r = await res.json();
+      if (!r || !["ok", "almost", "ng"].includes(r.verdict)) throw new Error("AI bad result");
+      return r;
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  // いまの場面と、これまでのやりとりを添えて判定を頼む
+  function aiJudge(turn, text, voice) {
+    const th = talk.theme;
+    const history = [];
+    for (let k = 0; k < talk.i; k++) {
+      history.push({ who: "partner", ko: th.turns[k].ko });
+      const mine = talk.replies.filter(r => r.turn === k && r.ko).pop();
+      if (mine) history.push({ who: "me", ko: mine.ko });
+    }
+    return callAi({
+      theme: th.title, level: th.level, partner: `${th.partner.name}（${th.partner.role}）`, voice,
+      history,
+      turn: { ko: turn.ko, ja: turn.ja, hint_ko: turn.hint.ko, hint_ja: turn.hint.ja, require: !!turn.require, keywords: turn.kw },
+      reply: text
+    });
+  }
+
+  // AI の判定中は、二重に送れないよう入力を止める
+  function setTalkBusy(busy) {
+    el.talkInput.disabled = busy;
+    el.btnTalkMic.disabled = busy;
+    el.btnHint.disabled = busy;
+    el.btnTalkSend.disabled = busy || !el.talkInput.value.trim();
+    if (!busy) el.talkInput.focus();
+  }
+
+  // AI のコメント（日本語）と、直した文・別の言い方
+  // 分かち書きの直しも見せたいので、空白は残して文末の記号だけ無視して比べる
+  const sameSentence = (a, b) => {
+    const t = x => x.trim().replace(/[\s.,!?~。、！？…]+$/, "").replace(/\s+/g, " ");
+    return t(a) === t(b);
+  };
+  function showAiFeedback(ai, text, ok) {
+    addBubble(ok ? "system tip ai" : "system ai", div => {
+      div.innerHTML = "<p class=\"b-note\">🤖 AIのアドバイス</p><p class=\"b-ja\"></p>";
+      div.querySelector(".b-ja").textContent = ai.feedback_ja;
+      const addLine = (label, ko) => {
+        const p = document.createElement("p");
+        p.className = "b-ai-line";
+        p.innerHTML = "<small></small><span class=\"b-ko\" lang=\"ko\"></span>";
+        p.firstChild.textContent = label;
+        p.lastChild.textContent = ko;
+        div.appendChild(p);
+      };
+      const fixed = (ai.corrected_ko || "").trim();
+      const better = (ai.better_ko || "").trim();
+      if (fixed && !sameSentence(fixed, text)) addLine("直すと", fixed);
+      if (better && !sameSentence(better, fixed) && !sameSentence(better, text)) addLine("こんな言い方も", better);
+      if (!ok) {
+        const use = fixed && !sameSentence(fixed, text) ? fixed : better;
+        if (use) {
+          const b = document.createElement("button");
+          b.type = "button";
+          b.className = "b-use";
+          b.textContent = "この文を入力欄に入れる";
+          b.addEventListener("click", () => {
+            el.talkInput.value = use;
+            el.btnTalkSend.disabled = false;
+            el.talkInput.focus();
+          });
+          div.appendChild(b);
+        }
+      }
+    });
+  }
+
   function startTalk(id) {
     if (talkRec) stopTalkRec(true);
     const th = themeById(id);
@@ -748,13 +879,13 @@
   // 返事の処理（文字入力・録音の共通）
   //   text: 入力した文、または録音の文字起こし（取れなかったときは空）
   //   audioUrl: 録音した返事（文字入力のときは null）
-  function handleReply(text, audioUrl) {
+  //   AI判定が使えるときは AI に判定してもらい、使えないとき・失敗したときは簡易判定にする
+  async function handleReply(text, audioUrl) {
     const turn = talk.theme.turns[talk.i];
+    const turnNo = talk.i;
     const judged = !!text;
-    // キーワードが入っていれば「ぴったり」、入っていなくても自然な韓国語の返事なら「通じた」
-    const exact = judged && hasHangul(text) && understood(text, turn.kw);
-    const ok = exact || (judged && hasHangul(text) && !turn.require && naturalReply(text, turn));
-    addBubble("me", div => {
+    let mark;
+    const bubble = addBubble("me", div => {
       if (audioUrl) {
         const play = document.createElement("button");
         play.type = "button";
@@ -771,17 +902,16 @@
         p.textContent = text;
         div.appendChild(p);
       }
-      const mark = document.createElement("span");
+      mark = document.createElement("span");
       mark.className = "b-mark";
-      mark.textContent = !judged ? "🎙️ 録音で返事しました" : ok ? "✓ 通じました" : "💡 もう少し";
       div.appendChild(mark);
-      div.classList.toggle("ok", ok);
       div.classList.toggle("voice", !!audioUrl);
     });
-    talk.replies.push({ ko: text, ok: judged ? ok : null, hint: turn.hint.ko, turn: talk.i, audio: audioUrl });
 
     // 文字起こしができない端末では内容を判定できないので、参考の答えを見せて先に進む
     if (!judged) {
+      mark.textContent = "🎙️ 録音で返事しました";
+      talk.replies.push({ ko: text, ok: null, hint: turn.hint.ko, turn: turnNo, audio: audioUrl });
       addBubble("system", div => {
         div.innerHTML = "<p class=\"b-note\">この端末では音声の文字起こしができないため、内容は判定していません。</p><p class=\"b-ja\"></p><p class=\"b-ko\" lang=\"ko\"></p>";
         div.querySelector(".b-ja").textContent = "参考の答えと聞き比べてみましょう。";
@@ -790,10 +920,41 @@
       nextTurn();
       return;
     }
+
+    // AI判定（ハングルを含む返事だけ。ひらがなだけ等は簡易判定のヒントで足りる）
+    let ai = null;
+    if (hasHangul(text) && aiReady()) {
+      mark.textContent = "🤖 AIが確認中…";
+      setTalkBusy(true);
+      try {
+        ai = await aiJudge(turn, text, !!audioUrl);
+      } catch (e) {
+        ai = null;
+        if (!talk.aiFailNoted) {
+          talk.aiFailNoted = true;
+          addBubble("system", div => {
+            div.innerHTML = "<p class=\"b-ja\">AIに接続できなかったため、今回は簡易判定（文末・キーワード）で確認しました。</p>";
+          });
+        }
+      }
+      if (!talk || talk.done || talk.i !== turnNo) return;
+      setTalkBusy(false);
+    }
+
+    // 簡易判定：キーワードが入っていれば「ぴったり」、入っていなくても自然な韓国語の返事なら「通じた」
+    const exact = hasHangul(text) && understood(text, turn.kw);
+    const ruleOk = exact || (hasHangul(text) && !turn.require && naturalReply(text, turn));
+    const ok = ai ? ai.verdict === "ok" : ruleOk;
+    mark.textContent = ok ? "✓ 通じました" : "💡 もう少し";
+    bubble.classList.toggle("ok", ok);
+    talk.replies.push({ ko: text, ok, hint: (ai && ai.better_ko) || turn.hint.ko, turn: turnNo, audio: audioUrl, ai: !!ai });
+
     if (ok) {
       sfx.correct();
       talk.ok++;
-      if (!exact) {
+      if (ai) {
+        showAiFeedback(ai, text, true);
+      } else if (!exact) {
         addBubble("system tip", div => {
           div.innerHTML = "<p class=\"b-ja\">💬 こんな言い方もできます</p><p class=\"b-ko\" lang=\"ko\"></p>";
           div.querySelector(".b-ko").textContent = turn.hint.ko;
@@ -803,6 +964,14 @@
       return;
     }
     talk.tries++;
+    if (ai) {
+      showAiFeedback(ai, text, false);
+      if (talk.tries >= 2) {
+        showHint(turn, "この言い方も覚えておきましょう。会話は先に進みます。");
+        nextTurn();
+      }
+      return;
+    }
     if (!hasHangul(text)) {
       showHint(turn, "韓国語（ハングル）で書いてみましょう。");
     } else if (talk.tries >= 2) {

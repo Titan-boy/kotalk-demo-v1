@@ -379,6 +379,10 @@ body.focus main { padding-bottom: 150px; }
 .b-ko { font-size: 17px; }
 .b-ja { color: var(--muted); font-size: 13px; margin-top: 4px !important; }
 .b-note { font-weight: 700; font-size: 14px; margin-bottom: 4px !important; }
+/* AIのアドバイス */
+.bubble.ai .b-ja { color: var(--text); font-size: 14px; }
+.b-ai-line { margin-top: 8px !important; }
+.b-ai-line small { display: block; font-size: 11px; font-weight: 700; color: var(--muted); }
 .b-listen, .b-use { margin-top: 8px; border: 0; background: var(--surface-2); color: var(--navy); border-radius: 999px; padding: 6px 14px; font: inherit; font-size: 13px; cursor: pointer; }
 .composer { position: fixed; left: 0; right: 0; bottom: 0; z-index: 15; background: var(--bg); border-top: 1px solid var(--line); padding: 10px 16px calc(10px + env(safe-area-inset-bottom)); }
 body:not(.focus) .composer { display: none; }
