@@ -422,6 +422,7 @@
       ["録音方式", HAS_MR ? "MediaRecorder" : HAS_WEBAUDIO ? "WAV（互換モード）" : "×"],
       ["AI判定", !AI_ENDPOINT ? "未設定（簡易判定）" : state.ai !== false ? "オン" : "オフ"],
       ["学習記録", !RECORDS_ON ? "使わない設定" : recRegistered() ? `登録済み（${state.records.classCode}）` : "未登録"],
+      ["音声の文字起こし", (window.SpeechRecognition || window.webkitSpeechRecognition) ? "○（ブラウザの音声認識）" : "×（録音だけ。判定なし）"],
       ["音声読み上げ", mark(HAS_TTS)],
       ["韓国語の読み上げ音声", HAS_TTS ? `${koVoices().length} 件` : "×"]
     ];
@@ -1144,7 +1145,7 @@
       talk.replies.push({ ko: text, ok: null, hint: turn.hint.ko, turn: turnNo, audio: audioUrl });
       logReply(turn, turnNo, talk.tries + 1, text, audioUrl, "", "none", null);
       addBubble("system", div => {
-        div.innerHTML = "<p class=\"b-note\">この端末では音声の文字起こしができないため、内容は判定していません。</p><p class=\"b-ja\"></p><p class=\"b-ko\" lang=\"ko\"></p>";
+        div.innerHTML = `<p class="b-note">${SR ? "声を文字にできなかったため" : "この端末では音声の文字起こしができないため"}、内容は判定していません。</p><p class="b-ja"></p><p class="b-ko" lang="ko"></p>`;
         div.querySelector(".b-ja").textContent = "参考の答えと聞き比べてみましょう。";
         div.querySelector(".b-ko").textContent = `例）${turn.hint.ko}`;
       });
@@ -1251,15 +1252,54 @@
   // ----- マイク：声で返事を録音して送る -----
   // タップで録音開始、もう一度タップ（または15秒）で送信。
   // 対応端末では同時にブラウザの音声認識で文字起こしし、その文で「通じたか」を判定する。
+  // iPhone の Safari では文字起こしが取れたり取れなかったりしたため、次のようにしている。
+  //   1) 音声認識はタップの直後（await の前）に始める。待ったあとだと操作の扱いが切れて始まらないことがある
+  //   2) 途中で止まったら（間を空けると自動で終わる）録音中は自動で再開し、確定した文をつなげる
+  //   3) 送るときは先に音声認識を止めて最後の結果を待ち、そのあとでマイクを止める（逆だと最後の言葉が消える）
+  //   4) それでも文字にできなかったときは、会話を先に進めずに「もう一度」か「このまま進む」を選んでもらう
   // TODO(API): 本番では録音データを音声認識API（サーバー経由）に送り、どの端末でも判定できるようにする
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
   const TALK_MAX_SEC = 15;
-  let talkRec = null; // { rec, stream, start, timer, sr, transcript }
+  const SR_FINISH_WAIT_MS = 2000;
+  let talkRec = null; // { rec, stream, start, timer, sr, finals, interim, srError, stopping }
 
   function resetTalkMic() {
     el.btnTalkMic.classList.remove("on");
     el.btnTalkMic.textContent = "🎤";
     el.btnTalkMic.setAttribute("aria-label", "声で返事を録音");
+  }
+
+  const transcriptOf = tr => (tr.finals.join(" ") + " " + tr.interim).replace(/\s+/g, " ").trim();
+
+  // 音声認識を1回分始める。終わったら、録音中なら自動で続きを始める
+  function startRecognition(tr) {
+    const s = new SR();
+    s.lang = "ko-KR";
+    s.interimResults = true;
+    s.continuous = true;
+    s.onresult = e => {
+      let interim = "";
+      for (let i = e.resultIndex; i < e.results.length; i++) {
+        const t = e.results[i][0].transcript;
+        if (e.results[i].isFinal) tr.finals.push(t.trim());
+        else interim += t;
+      }
+      tr.interim = interim;
+    };
+    s.onerror = e => { tr.srError = (e && e.error) || "error"; };
+    s.onend = () => {
+      // 間が空いて自動で終わったときは、確定前の文も残してから再開する
+      if (tr.interim.trim()) { tr.finals.push(tr.interim.trim()); tr.interim = ""; }
+      if (tr.sr !== s) return;
+      if (!tr.stopping && talkRec === tr && tr.restarts < 5 && tr.srError !== "not-allowed" && tr.srError !== "service-not-allowed") {
+        tr.restarts++;
+        try { startRecognition(tr); return; } catch (err) { /* 再開できなければそのまま */ }
+      }
+      tr.sr = null;
+      if (tr.onSrEnd) tr.onSrEnd();
+    };
+    tr.sr = s;
+    s.start();
   }
 
   el.btnTalkMic.addEventListener("click", async () => {
@@ -1273,43 +1313,39 @@
     }
     sfx.unlock();
     partnerAudio.pause();
-    let stream;
+    const tr = { rec: null, stream: null, start: Date.now(), timer: null, sr: null, finals: [], interim: "", srError: "", restarts: 0, stopping: false };
+    // 文字起こしは、タップの操作の中ですぐ始める（対応端末のみ。失敗しても録音は続ける）
+    if (SR) {
+      try { startRecognition(tr); } catch (e) { tr.sr = null; tr.srError = "start-failed"; }
+    }
+    talkRec = tr;
     try {
-      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      tr.stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       if (micPerm !== "granted") { micPerm = "granted"; renderDiagnostics(); }
     } catch (e) {
+      talkRec = null;
+      tr.stopping = true;
+      if (tr.sr) { try { tr.sr.abort(); } catch (err) {} }
       const noDevice = e && (e.name === "NotFoundError" || e.name === "OverconstrainedError");
       if (!noDevice) micPerm = "denied";
       renderDiagnostics();
       el.micStatus.textContent = noDevice ? "マイクが見つかりませんでした" : `マイクが許可されていません。${micHowTo()}`;
       return;
     }
-    let r = null;
     try {
-      r = HAS_MR ? startMediaRecorder(stream) : startWavRecorder(stream);
+      tr.rec = HAS_MR ? startMediaRecorder(tr.stream) : startWavRecorder(tr.stream);
     } catch (e) {
-      try { r = HAS_WEBAUDIO ? startWavRecorder(stream) : null; } catch (e2) { r = null; }
+      try { tr.rec = HAS_WEBAUDIO ? startWavRecorder(tr.stream) : null; } catch (e2) { tr.rec = null; }
     }
-    if (!r) {
-      stream.getTracks().forEach(t => t.stop());
+    if (!tr.rec || talkRec !== tr) {
+      talkRec = null;
+      tr.stopping = true;
+      if (tr.sr) { try { tr.sr.abort(); } catch (err) {} }
+      tr.stream.getTracks().forEach(t => t.stop());
       el.micStatus.textContent = "録音を開始できませんでした";
       return;
     }
-    const tr = { rec: r, stream, start: Date.now(), transcript: "", sr: null };
-    talkRec = tr;
-    // 文字起こし（対応端末のみ。失敗しても録音はそのまま続ける）
-    if (SR) {
-      try {
-        const s = new SR();
-        s.lang = "ko-KR";
-        s.interimResults = true;
-        s.continuous = true;
-        s.onresult = e => { tr.transcript = Array.from(e.results).map(x => x[0].transcript).join(""); };
-        s.onerror = () => {};
-        s.start();
-        tr.sr = s;
-      } catch (e) { tr.sr = null; }
-    }
+    tr.start = Date.now();
     el.btnTalkMic.classList.add("on");
     el.btnTalkMic.textContent = "■";
     el.btnTalkMic.setAttribute("aria-label", "録音を止めて送る");
@@ -1320,23 +1356,60 @@
     }, 100);
   });
 
+  // 音声認識を止めて、最後の結果が届く（end が来る）まで待つ
+  function finishRecognition(tr) {
+    tr.stopping = true;
+    if (!tr.sr) return Promise.resolve();
+    return new Promise(resolve => {
+      const timer = setTimeout(resolve, SR_FINISH_WAIT_MS);
+      tr.onSrEnd = () => { clearTimeout(timer); resolve(); };
+      try { tr.sr.stop(); } catch (e) { clearTimeout(timer); resolve(); }
+    });
+  }
+
   async function stopTalkRec(cancel) {
     const tr = talkRec;
-    if (!tr) return;
+    if (!tr || !tr.rec) return;
     talkRec = null;
     clearInterval(tr.timer);
     resetTalkMic();
     const dur = (Date.now() - tr.start) / 1000;
-    const blob = await tr.rec.stop();
+    if (!cancel) el.micStatus.textContent = "文字にしています…";
+    await finishRecognition(tr);           // 先に音声認識を終わらせる
+    const blob = await tr.rec.stop();      // そのあとで録音とマイクを止める
     tr.stream.getTracks().forEach(t => t.stop());
-    if (tr.sr) {
-      try { tr.sr.stop(); } catch (e) {}
-      await new Promise(res => setTimeout(res, 500)); // 最後の文字起こしを待つ
-    }
     el.micStatus.textContent = "";
     if (cancel || !talk || talk.finished) return;
     if (dur < 0.6) { el.micStatus.textContent = "短すぎました。もう一度どうぞ"; return; }
-    handleReply(tr.transcript.trim(), URL.createObjectURL(blob));
+    const text = transcriptOf(tr);
+    const url = URL.createObjectURL(blob);
+    if (!text && SR) { showUnheard(url, tr.srError); return; }
+    handleReply(text, url);
+  }
+
+  // 音声認識に対応しているのに文字にできなかったとき：会話は進めず、理由と次の手を示す
+  const SR_ERROR_HINT = {
+    "not-allowed": "音声認識が許可されていません。iPhone は「設定 → 一般 → キーボード → 音声入力」をオンにし、Safari のマイクを「許可」にしてください。",
+    "service-not-allowed": "音声認識が使えない設定になっています。iPhone は「設定 → 一般 → キーボード → 音声入力」をオンにしてください。",
+    "no-speech": "声が聞き取れませんでした。マイクに近づいて、少しはっきり話してみてください。",
+    "network": "音声認識の通信に失敗しました。電波の良いところで、もう一度どうぞ。",
+    "audio-capture": "マイクを使えませんでした。ほかのアプリがマイクを使っていないか確かめてください。"
+  };
+  function showUnheard(audioUrl, srError) {
+    addBubble("me voice", div => {
+      div.innerHTML = "<button type=\"button\" class=\"b-voice\">▶ 自分の声を聞く</button><span class=\"b-mark\">🎙️ 文字にできませんでした</span>";
+      const a = new Audio(audioUrl);
+      div.querySelector(".b-voice").addEventListener("click", () => { a.currentTime = 0; a.play().catch(() => {}); });
+    });
+    addBubble("system", div => {
+      div.innerHTML = "<p class=\"b-note\">声を文字にできませんでした。</p><p class=\"b-ja\"></p><button class=\"b-use\" type=\"button\">この録音のまま次へ進む</button>";
+      div.querySelector(".b-ja").textContent = `${SR_ERROR_HINT[srError] || "もう一度🎤で話すか、文字で入力してください。"}（もう一度🎤を押すと録り直せます）`;
+      const go = div.querySelector(".b-use");
+      go.addEventListener("click", () => {
+        go.disabled = true;
+        if (talk && !talk.finished) handleReply("", audioUrl);
+      });
+    });
   }
 
   function finishTalk() {
