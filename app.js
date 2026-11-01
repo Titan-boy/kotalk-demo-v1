@@ -383,6 +383,8 @@
   function noRecordReason() {
     if (!window.isSecureContext) return "録音には https で開く必要があります";
     if (IN_APP) return "アプリ内ブラウザでは録音できません。Safari / Chrome で開いてください";
+    // iPhone で https なのにマイクの機能自体が無い → ロックダウンモードでブロックされている可能性が高い
+    if (IS_IOS && !HAS_GUM) return "iPhoneの「ロックダウンモード」でマイクが使えない状態です。このサイトをロックダウンモードから除外してください";
     return "このブラウザでは録音できません";
   }
   if (!canRecord) {
@@ -546,6 +548,7 @@
     const rows = [
       ["ブラウザ", IN_APP ? "アプリ内ブラウザ" : "通常ブラウザ"],
       ["https 接続", mark(window.isSecureContext)],
+      ["マイク機能", HAS_GUM ? "○" : (IS_IOS && window.isSecureContext ? "×（ロックダウンモードの可能性）" : "×")],
       ["マイクの権限", micPermLabel()],
       ["録音方式", HAS_MR ? "MediaRecorder" : HAS_WEBAUDIO ? "WAV（互換モード）" : "×"],
       ["音声読み上げ", mark(HAS_TTS)],
@@ -1059,7 +1062,12 @@
   el.btnTalkMic.addEventListener("click", async () => {
     if (!talk || talk.finished) return;
     if (talkRec) { stopTalkRec(); return; }
-    if (!canRecord) { el.micStatus.textContent = noRecordReason(); return; }
+    if (!canRecord) {
+      // 録音できない端末でも、キーボードの音声入力（🎤）なら文字で返事できる
+      el.micStatus.textContent = `${noRecordReason()}。今はキーボードの🎤（音声入力）で返事できます`;
+      el.talkInput.focus();
+      return;
+    }
     sfx.unlock();
     partnerAudio.pause();
     let stream;
