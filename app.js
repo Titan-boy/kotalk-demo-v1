@@ -742,14 +742,22 @@
     }
     return diff + (a.length - i) + (b.length - j) <= 1;
   }
-  function kwHit(n, kw, fuzzy) {
-    if (!kw) return false;
-    if (n.includes(kw)) return true;
-    if (!fuzzy || kw.length < 3) return false;
-    for (let len = kw.length - 1; len <= kw.length + 1; len++) {
-      for (let i = 0; i + len <= n.length; i++) if (within1(n.slice(i, i + len), kw)) return true;
+  // 否定の形（「안 피곤해요」「피곤하지 않아요」）は、その語を言ったことにしない
+  const negated = (n, i, len) => n[i - 1] === "안" || n.slice(i + len, i + len + 3).includes("지않");
+  // 語が見つかった位置（見つからなければ -1）
+  function kwFind(n, kw, fuzzy) {
+    if (!kw) return -1;
+    for (let i = n.indexOf(kw); i !== -1; i = n.indexOf(kw, i + 1)) {
+      if (!negated(n, i, kw.length)) return i;
     }
-    return false;
+    // 1文字違いは、取り違えが起きにくい4文字以上の語だけ（「일해요」と「안해요」のような誤りを防ぐ）
+    if (!fuzzy || kw.length < 4) return -1;
+    for (let len = kw.length - 1; len <= kw.length + 1; len++) {
+      for (let i = 0; i + len <= n.length; i++) {
+        if (within1(n.slice(i, i + len), kw) && !negated(n, i, len)) return i;
+      }
+    }
+    return -1;
   }
   // どの分かれ道に当たるか（当たらなければ null。決まった流れのキーワードが優先される場合も null）
   function matchBranch(th, n, text) {
@@ -759,20 +767,35 @@
     const t = norm(text).toLowerCase();
     const best = fuzzy => {
       for (const weakPass of [false, true]) {
-        let hit = null, len = 0;
+        let hit = null, len = 0, at = -1;
         tb.branches.filter(b => !!b.weak === weakPass).forEach(b => b.kw.forEach(k => {
           const kk = norm(k).toLowerCase();
-          if (kk.length > len && kwHit(t, kk, fuzzy)) { hit = b; len = kk.length; }
+          if (kk.length <= len) return;
+          const i = kwFind(t, kk, fuzzy);
+          if (i !== -1) { hit = b; len = kk.length; at = i; }
         }));
-        if (hit) return hit;
+        if (hit) return { b: hit, at, len };
       }
       return null;
     };
-    const mainExact = understood(text, turn.kw);
+    // 決まった流れのキーワードが見つかった範囲
+    const mainSpans = turn.kw.map(k => {
+      const kk = norm(k).toLowerCase();
+      const i = kwFind(t, kk, false);
+      return i === -1 ? null : [i, i + kk.length];
+    }).filter(Boolean);
+    const mainExact = mainSpans.length > 0;
     const exact = best(false);
-    if (exact) return turn.require && mainExact && exact.kind === "redirect" ? null : exact;
+    if (exact) {
+      // require のターン：話を戻す分かれ道の語が、決まった流れの語の一部（「명동역」の「역」）なら決まった流れ。
+      // 別の場所を聞いている（「명동역 근처 약국」の「약국」）なら、そちらに答える
+      if (turn.require && exact.b.kind === "redirect" &&
+          mainSpans.some(([s, e]) => exact.at <= e && s <= exact.at + exact.len)) return null; // 重なる・隣り合う
+      return exact.b;
+    }
     if (mainExact) return null;
-    return best(true);
+    const fz = best(true);
+    return fz ? fz.b : null;
   }
 
   // 空白・記号を無視して、キーワードのどれかが入っていれば「通じた」
