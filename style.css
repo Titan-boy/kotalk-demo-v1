@@ -91,49 +91,10 @@ main { max-width: 520px; margin: 0 auto; padding: 16px; }
 .btn.link { border: 0; background: none; color: var(--primary); font-size: 13px; text-decoration: underline; display: block; margin: 8px auto 0; }
 .btn.block { display: block; width: 100%; margin-top: 12px; }
 .btn:disabled { opacity: .45; cursor: not-allowed; }
-
-/* ===== Recording ===== */
-#recordCard { text-align: center; }
-.rec-btn {
-  width: 88px; height: 88px; border-radius: 50%; border: 4px solid var(--accent);
-  background: var(--surface); margin: 8px auto; display: grid; place-items: center; cursor: pointer;
-}
-.rec-dot { width: 54px; height: 54px; border-radius: 50%; background: var(--accent); transition: all .2s; }
-.rec-btn.recording .rec-dot { width: 30px; height: 30px; border-radius: 6px; }
-.rec-btn.recording { animation: pulse 1.2s infinite; }
+/* 会話の🎤録音中 */
 @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(255, 90, 95, .45); } 100% { box-shadow: 0 0 0 18px rgba(255, 90, 95, 0); } }
-.rec-status { font-size: 14px; color: var(--muted); margin: 6px 0; }
-audio { width: 100%; margin-top: 8px; }
 
-/* ===== Result ===== */
-.mock-tag { font-size: 11px; color: var(--accent); border: 1px dashed var(--accent); border-radius: 6px; padding: 0 5px; margin-left: 4px; }
-.score-ring {
-  --p: 0;
-  width: 120px; height: 120px; border-radius: 50%; margin: 6px auto 14px;
-  background: conic-gradient(var(--primary) calc(var(--p) * 1%), var(--line) 0);
-  display: grid; place-items: center; position: relative;
-}
-.score-ring::before { content: ""; position: absolute; inset: 10px; border-radius: 50%; background: var(--surface); }
-.score-ring span, .score-ring small { position: relative; }
-.score-ring span { font-size: 36px; font-weight: 800; line-height: 1; }
-.score-ring small { position: absolute; bottom: 30px; font-size: 12px; color: var(--muted); }
-.sub { display: grid; grid-template-columns: 56px 1fr 32px; align-items: center; gap: 8px; font-size: 13px; margin-bottom: 6px; }
-.bar { height: 8px; background: var(--line); border-radius: 99px; overflow: hidden; }
-.bar i { display: block; height: 100%; background: var(--primary); border-radius: 99px; }
-.sub-val { text-align: right; font-weight: 700; }
-.ratio-note { font-size: 12px; color: var(--muted); margin: 12px 0 6px; }
-.feedback-list { list-style: none; padding: 0; margin: 0; }
-.feedback-list li {
-  display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; margin-bottom: 8px;
-  border-radius: 12px; background: var(--bg); cursor: pointer; font-size: 14px;
-  border-left: 4px solid var(--ja);
-}
-.feedback-list li[data-lang="ko"] { border-left-color: var(--ko); }
-.lang-chip {
-  flex: none; font-size: 11px; font-weight: 700; color: #fff; background: var(--ja);
-  border-radius: 6px; padding: 1px 6px; margin-top: 2px;
-}
-li[data-lang="ko"] .lang-chip { background: var(--ko); }
+/* ===== 出席の報酬表示（会話のまとめ） ===== */
 .reward { margin-top: 12px; padding: 12px; border-radius: 12px; background: color-mix(in srgb, var(--ok) 12%, transparent); font-size: 14px; }
 
 /* ===== Streak ===== */
@@ -284,25 +245,9 @@ body.focus { padding-bottom: env(safe-area-inset-bottom); }
 .step span { font-size: 11px; }
 .score-sub { font-size: 13px; }
 
-/* ===== 録音タイマー ===== */
-.rec-timer { display: flex; align-items: center; gap: 10px; margin: 6px 4px 0; }
-.rec-timer-track { flex: 1; height: 6px; border-radius: 99px; background: var(--surface-2); overflow: hidden; }
-.rec-timer-track i { display: block; height: 100%; width: 100%; background: var(--accent); border-radius: 99px; transition: width .05s linear; }
-.rec-count { width: 14px; font-size: 13px; font-weight: 700; color: var(--muted); text-align: center; }
-.rec-count.pop { animation: count-pop .4s ease-out; }
-@keyframes count-pop { from { transform: scale(1.6); color: var(--text); } to { transform: scale(1); } }
-
 /* ===== 設定スイッチ ===== */
 .switch-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 14px; cursor: pointer; }
 .switch-row input { width: 22px; height: 22px; accent-color: var(--primary); }
-
-/* ===== 仮点数バナー ===== */
-.demo-banner {
-  margin: -4px -4px 14px; padding: 12px 14px; border-radius: 14px; text-align: center;
-  background: color-mix(in srgb, var(--accent) 22%, var(--surface)); border: 2px solid var(--accent);
-  color: var(--text); font-size: 17px; font-weight: 800; line-height: 1.4;
-}
-.demo-banner small { font-size: 13px; font-weight: 600; }
 
 /* ===== スタート画面：おすすめ・リンク ===== */
 .rec-badge { align-self: flex-start; font-size: 11px; font-weight: 800; color: var(--primary-ink); background: var(--ok); border-radius: 999px; padding: 1px 10px; margin-bottom: 2px; }
@@ -444,9 +389,9 @@ body:not(.focus) .composer { display: none; }
 .icon-btn.mic.on { background: var(--accent); color: #fff; }
 .btn.send { flex: none; min-width: 64px; border-radius: 14px; background: var(--navy); color: #fff; border: 0; font-weight: 800; }
 .btn.send:disabled { background: #9aa3b5; opacity: 1; }
-.composer-tools { display: flex; align-items: center; gap: 10px; max-width: 520px; margin: 4px auto 0; }
-.composer-tools .btn.link { margin: 0; font-size: 13px; }
-.mic-status { font-size: 12px; color: var(--muted); }
+.composer-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; max-width: 520px; margin: 4px auto 0; }
+.composer-tools .btn.link { margin: 0; font-size: 13px; flex: none; white-space: nowrap; }
+.mic-status { flex: 1 1 100%; font-size: 12px; color: var(--muted); white-space: pre-line; }
 
 /* 会話のまとめ */
 .sum-theme { margin: 0 0 10px; font-weight: 700; color: var(--navy); }
@@ -489,7 +434,6 @@ body:not(.focus) .composer { display: none; }
 .quiz-pill { background: var(--surface-2); }
 .coach-avatar { background: #f0a35e; }
 .coach-bubble::before { background: var(--surface); }
-.demo-banner { background: #fff1ee; }
 .toast { background: var(--navy); color: #fff; }
 .help-box, .inapp-banner { color: var(--text); }
 

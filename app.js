@@ -6,8 +6,6 @@
   const STREAK_BONUS_EVERY = 7;
   const STREAK_BONUS = 30;
   const EXCHANGE_COST = 300;
-  const MAX_REC_SEC = 7;
-  const COUNTDOWN_FROM = 3; // 残り3秒から 3・2・1 を表示
   const STORAGE_KEY = "kotalk-demo-v1";
 
   // ===== 状態（デモのため localStorage に保存） =====
@@ -105,7 +103,7 @@
   // Web Audio は iPhone の消音スイッチで無音になるため、<audio> 要素で再生する。
   // iOS は volume 指定が効かないので、音量はファイル側で小さめに調整済み。
   const sfx = (() => {
-    const files = { correct: "audio/sfx/correct.mp3", wrong: "audio/sfx/wrong.mp3", tick: "audio/sfx/tick.mp3" };
+    const files = { correct: "audio/sfx/correct.mp3", wrong: "audio/sfx/wrong.mp3" };
     const players = {};
     Object.entries(files).forEach(([k, src]) => {
       const a = new Audio(src);
@@ -113,7 +111,7 @@
       players[k] = a;
     });
     let unlocked = false;
-    // iOS ではタップ操作の中で一度再生しておかないと、後からの再生（録音カウントなど）が許可されない
+    // iOS ではタップ操作の中で一度再生しておかないと、後からの再生（会話の効果音など）が許可されない
     function unlock() {
       if (unlocked) return;
       unlocked = true;
@@ -140,71 +138,11 @@
     return {
       unlock,
       correct: () => play("correct"), // 딩동댕
-      wrong: () => play("wrong"),     // 띵-!
-      tick: () => play("tick")        // 録音の残り 3・2・1
+      wrong: () => play("wrong")      // 띵-!
     };
   })();
   // 最初のタップで効果音を使えるようにしておく
   document.addEventListener("pointerdown", () => sfx.unlock(), { once: true, capture: true });
-
-  // ===== 発音評価（現在はダミー） =====
-  async function evaluatePronunciation(audioBlob, sentence, durationSec) {
-    // ------------------------------------------------------------
-    // TODO(API): 発音評価APIの接続位置
-    //   ここで audioBlob と sentence.ko（正解テキスト）を発音評価APIへ送信し、
-    //   { total, accuracy, intonation, fluency, weakSyllables[] } などを受け取る。
-    //   例:
-    //   const fd = new FormData();
-    //   fd.append("audio", audioBlob, "rec.webm");
-    //   fd.append("reference", sentence.ko);
-    //   const res = await fetch("https://<your-api>/v1/pronunciation", { method: "POST", body: fd });
-    //   return await res.json();
-    //   ※ APIキーはフロントに置かず、サーバー（またはサーバーレス関数）経由で呼ぶこと
-    // ------------------------------------------------------------
-    await new Promise(r => setTimeout(r, 900)); // 通信待ちの演出
-
-    const rnd = (min, max) => Math.round(min + Math.random() * (max - min));
-    // 録音が極端に短い場合は低めに（ダミーでも挙動が分かるように）
-    const penalty = durationSec != null && durationSec < 1.5 ? 20 : 0;
-    const accuracy = Math.max(30, rnd(68, 96) - penalty);
-    const intonation = Math.max(30, rnd(62, 95) - penalty);
-    const fluency = Math.max(30, rnd(60, 95) - penalty);
-    const total = Math.round(accuracy * 0.5 + intonation * 0.25 + fluency * 0.25);
-    return { total, accuracy, intonation, fluency, mock: true };
-  }
-
-  // ===== フィードバック文の生成と言語比率 =====
-  // 各項目は ja / ko の両方を持ち、比率設定に応じてどちらで表示するかを決める。
-  // jaPriority が小さい項目ほど日本語で表示されやすい（説明系 → 日本語、励まし系 → 韓国語）。
-  // TODO(API): 本番では講師監修のテンプレートやLLM生成に置き換え可能
-  function buildFeedback(result, sentence) {
-    const items = [];
-    if (result.total >= 85) {
-      items.push({ jaPriority: 2, ja: "全体的にとても自然な発音です。この調子で続けましょう。", ko: "전체적으로 아주 자연스러워요. 이대로 계속해 봐요." });
-    } else if (result.total >= 70) {
-      items.push({ jaPriority: 2, ja: "意味はしっかり伝わります。下の2点を意識するとさらに自然になります。", ko: "뜻은 잘 전달돼요. 아래 두 가지를 신경 쓰면 더 자연스러워져요." });
-    } else {
-      items.push({ jaPriority: 2, ja: "まずはお手本を聞き、ゆっくり区切って読んでみましょう。", ko: "먼저 원어민 발음을 듣고 천천히 끊어서 읽어 봐요." });
-    }
-    sentence.points.forEach(p => {
-      items.push({ jaPriority: 1, ja: `「${p.mark}」${p.ja}`, ko: `「${p.mark}」${p.ko}` });
-    });
-    const weakest = [["accuracy", result.accuracy], ["intonation", result.intonation], ["fluency", result.fluency]]
-      .sort((a, b) => a[1] - b[1])[0][0];
-    const weakTips = {
-      accuracy: { ja: "パッチムの音が曖昧になりがちです。語尾まで口の形を保ちましょう。", ko: "받침 소리가 흐려지기 쉬워요. 끝까지 입 모양을 유지해 보세요." },
-      intonation: { ja: "日本語より文末の上げ下げをはっきりさせると韓国語らしくなります。", ko: "문장 끝 억양을 조금 더 분명하게 하면 한국어답게 들려요." },
-      fluency: { ja: "意味のかたまりごとに区切ると、なめらかに聞こえます。", ko: "의미 단위로 끊어 읽으면 더 매끄럽게 들려요." }
-    };
-    items.push(Object.assign({ jaPriority: 3 }, weakTips[weakest]));
-    items.push({ jaPriority: 4, ja: "明日も1文だけ練習して、連続記録を伸ばしましょう！", ko: "내일도 한 문장만 연습해서 연속 기록을 늘려 봐요!" });
-
-    const jaShare = state.ratio === "ja6" ? 0.6 : 0.4;
-    const jaCount = Math.round(items.length * jaShare);
-    const order = items.map((it, i) => i).sort((a, b) => items[a].jaPriority - items[b].jaPriority || a - b);
-    order.forEach((i, rank) => { items[i].lang = rank < jaCount ? "ja" : "ko"; });
-    return { items, jaCount, koCount: items.length - jaCount };
-  }
 
   // ===== DOM =====
   const $ = id => document.getElementById(id);
@@ -212,11 +150,6 @@
     pointsTop: $("pointsTop"),
     koSentence: $("koSentence"), jaTranslation: $("jaTranslation"), pronPoints: $("pronPoints"), sentenceIndex: $("sentenceIndex"),
     btnModel: $("btnModel"), btnExpl: $("btnExpl"), explBox: $("explBox"), explSummary: $("explSummary"), explGrammar: $("explGrammar"), btnToQuiz: $("btnToQuiz"),
-    btnRec: $("btnRec"), recStatus: $("recStatus"), playback: $("playback"),
-    btnEvaluate: $("btnEvaluate"), btnNoMic: $("btnNoMic"),
-    recordCard: $("recordCard"), resultCard: $("resultCard"),
-    scoreRing: $("scoreRing"), scoreTotal: $("scoreTotal"), subScores: $("subScores"),
-    ratioNote: $("ratioNote"), feedbackList: $("feedbackList"), rewardBox: $("rewardBox"), btnRetry: $("btnRetry"),
     streakNum: $("streakNum"), pointsNum: $("pointsNum"), restNum: $("restNum"),
     calendar: $("calendar"), streakHint: $("streakHint"),
     exchangeCost: $("exchangeCost"), exchangeBar: $("exchangeBar"), exchangeHint: $("exchangeHint"),
@@ -225,7 +158,7 @@
     toast: $("toast"),
     inAppBanner: $("inAppBanner"), btnCopyUrl: $("btnCopyUrl"), ttsHelp: $("ttsHelp"),
     diag: $("diag"), diagUa: $("diagUa"),
-    recTimer: $("recTimer"), recTimerBar: $("recTimerBar"), recCount: $("recCount"), sfxToggle: $("sfxToggle"),
+    sfxToggle: $("sfxToggle"),
     stepWords: $("stepWords"),
     stepQuiz: $("stepQuiz"), stepScore: $("stepScore"), stepSentence: $("stepSentence"),
     btnWordsClose: $("btnWordsClose"), wordsBar: $("wordsBar"), wordTag: $("wordTag"),
@@ -376,22 +309,20 @@
     el.ttsHelp.hidden = false;
   }
 
-  // ===== 録音 =====
-  // MediaRecorder が使えれば利用し、無い端末（古い iOS など）では Web Audio で WAV を作る
-  let rec = null, recBlob = null, recStart = 0, recDuration = null, recTimer = null, stream = null;
-
+  // ===== 録音できない理由（会話の🎤で表示） =====
   function noRecordReason() {
-    if (!window.isSecureContext) return "録音には https で開く必要があります";
-    if (IN_APP) return "アプリ内ブラウザでは録音できません。Safari / Chrome で開いてください";
+    if (!window.isSecureContext) return "録音するには https で開く必要があります。";
+    if (IN_APP) return "アプリ内ブラウザでは録音できません。Safari / Chrome で開いてください。";
     // iPhone で https なのにマイクの機能自体が無い → ロックダウンモードでブロックされている可能性が高い
-    if (IS_IOS && !HAS_GUM) return "iPhoneの「ロックダウンモード」でマイクが使えない状態です。このサイトをロックダウンモードから除外してください";
-    return "このブラウザでは録音できません";
+    // 方針：このアプリを使うときは一時的にオフにしてもらう。不安な人にはパソコンを勧める（学習者向けなので日本語）
+    if (IS_IOS && !HAS_GUM) {
+      return "iPhoneの「ロックダウンモード」がオンになっているため、マイクが使えません。" +
+        "声で練習するときは、ロックダウンモードを一時的にオフにしてください（設定 →「プライバシーとセキュリティ」→「ロックダウンモード」）。" +
+        "オフにするのが不安な場合は、パソコンで開くのがいちばん簡単です。";
+    }
+    return "このブラウザでは録音できません。";
   }
-  if (!canRecord) {
-    el.btnNoMic.hidden = false;
-    el.recStatus.textContent = noRecordReason();
-  }
-
+  // MediaRecorder が使えれば利用し、無い端末（古い iOS など）では Web Audio で WAV を作る
   function startMediaRecorder(s) {
     const chunks = [];
     const mr = new MediaRecorder(s);
@@ -438,87 +369,6 @@
     return new Blob([view], { type: "audio/wav" });
   }
 
-  function resetRecording() {
-    recBlob = null; recDuration = null;
-    el.playback.hidden = true;
-    el.playback.removeAttribute("src");
-    el.btnEvaluate.hidden = true;
-    el.resultCard.hidden = true;
-    el.recordCard.hidden = false;
-    el.btnRec.classList.remove("recording");
-    el.recStatus.textContent = canRecord ? "マイクをタップして録音" : noRecordReason();
-  }
-
-  async function stopRecording() {
-    if (!rec) return;
-    const r = rec;
-    rec = null;
-    clearInterval(recTimer);
-    el.recTimer.hidden = true;
-    recDuration = Math.min(MAX_REC_SEC, (Date.now() - recStart) / 1000);
-    recBlob = await r.stop();
-    stream.getTracks().forEach(t => t.stop());
-    el.playback.src = URL.createObjectURL(recBlob);
-    el.playback.hidden = false;
-    el.btnEvaluate.hidden = false;
-    el.btnRec.classList.remove("recording");
-    el.btnRec.setAttribute("aria-label", "録音し直す");
-    el.recStatus.textContent = `録音完了（${recDuration.toFixed(1)}秒）。もう一度タップで録り直し`;
-  }
-
-  el.btnRec.addEventListener("click", async () => {
-    if (!canRecord) { toast(noRecordReason()); return; }
-    if (rec) { stopRecording(); return; }
-    sfx.unlock();
-    try {
-      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      if (micPerm !== "granted") { micPerm = "granted"; renderDiagnostics(); }
-    } catch (e) {
-      el.btnNoMic.hidden = false;
-      const name = e && e.name;
-      const noDevice = name === "NotFoundError" || name === "OverconstrainedError";
-      if (!noDevice) micPerm = "denied";
-      // マイクがない場合以外は、ほぼ権限の問題なので許可の手順を出す
-      el.recStatus.textContent = noDevice
-        ? "マイクが見つかりませんでした（イヤホンのマイク等を接続してください）"
-        : `マイクの使用が許可されていません。${micHowTo()}`;
-      renderDiagnostics();
-      return;
-    }
-    try {
-      rec = HAS_MR ? startMediaRecorder(stream) : startWavRecorder(stream);
-    } catch (e) {
-      // MediaRecorder があっても形式非対応で失敗する端末向けに WAV で再試行
-      rec = HAS_WEBAUDIO ? startWavRecorder(stream) : null;
-      if (!rec) { el.recStatus.textContent = "録音を開始できませんでした"; el.btnNoMic.hidden = false; return; }
-    }
-    recStart = Date.now();
-    el.btnRec.classList.add("recording");
-    el.btnRec.setAttribute("aria-label", "録音停止");
-    el.playback.hidden = true;
-    el.btnEvaluate.hidden = true;
-    // 残り時間のバーが減っていき、最後の3秒だけ小さな数字と小さな音で知らせる
-    let lastCount = null;
-    el.recTimer.hidden = false;
-    el.recTimerBar.style.width = "100%";
-    el.recCount.textContent = "";
-    el.recStatus.textContent = "録音中…（タップで停止）";
-    recTimer = setInterval(() => {
-      const left = Math.max(0, MAX_REC_SEC - (Date.now() - recStart) / 1000);
-      el.recTimerBar.style.width = `${(left / MAX_REC_SEC) * 100}%`;
-      const count = Math.ceil(left);
-      if (count <= COUNTDOWN_FROM && count > 0 && count !== lastCount) {
-        lastCount = count;
-        el.recCount.textContent = count;
-        el.recCount.classList.remove("pop");
-        void el.recCount.offsetWidth;
-        el.recCount.classList.add("pop");
-        sfx.tick();
-      }
-      if (left <= 0) stopRecording();
-    }, 50);
-  });
-
   // ===== 対応状況の表示（設定タブ） =====
   // ブラウザごとのマイク許可の手順（1行）
   function micHowTo() {
@@ -561,72 +411,6 @@
       el.diag.append(dt, dd);
     });
     el.diagUa.textContent = UA;
-  }
-
-  el.btnEvaluate.addEventListener("click", () => runEvaluation(recBlob, recDuration));
-  el.btnNoMic.addEventListener("click", () => runEvaluation(null, null));
-  el.btnRetry.addEventListener("click", () => { resetRecording(); el.recordCard.scrollIntoView({ behavior: "smooth" }); });
-
-  async function runEvaluation(blob, duration) {
-    el.btnEvaluate.disabled = true;
-    el.btnNoMic.disabled = true;
-    el.recStatus.textContent = "評価中…";
-    const result = await evaluatePronunciation(blob, current(), duration);
-    el.btnEvaluate.disabled = false;
-    el.btnNoMic.disabled = false;
-    renderResult(result);
-    const ci = checkIn();
-    renderReward(ci);
-    renderPoints();
-  }
-
-  function renderResult(result) {
-    el.recordCard.hidden = true;
-    el.resultCard.hidden = false;
-    el.scoreTotal.textContent = result.total;
-    el.scoreRing.style.setProperty("--p", result.total);
-    el.subScores.innerHTML = "";
-    [["正確さ", result.accuracy], ["抑揚", result.intonation], ["流暢さ", result.fluency]].forEach(([label, v]) => {
-      const d = document.createElement("div");
-      d.className = "sub";
-      d.innerHTML = `<span class="sub-label"></span><div class="bar"><i style="width:${v}%"></i></div><span class="sub-val">${v}</span>`;
-      d.firstChild.textContent = label;
-      el.subScores.appendChild(d);
-    });
-
-    const fb = buildFeedback(result, current());
-    el.ratioNote.textContent = `言語バランス：日本語 ${fb.jaCount} ／ 韓国語 ${fb.koCount}（${state.ratio === "ja6" ? "6:4" : "4:6"}）`;
-    el.feedbackList.innerHTML = "";
-    fb.items.forEach(it => {
-      const li = document.createElement("li");
-      li.tabIndex = 0;
-      const show = lang => {
-        li.dataset.lang = lang;
-        li.lang = lang;
-        li.innerHTML = `<span class="lang-chip">${lang === "ja" ? "日" : "한"}</span><span class="fb-text"></span>`;
-        li.lastChild.textContent = it[lang];
-      };
-      show(it.lang);
-      const toggle = () => show(li.dataset.lang === "ja" ? "ko" : "ja");
-      li.addEventListener("click", toggle);
-      li.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggle(); } });
-      el.feedbackList.appendChild(li);
-    });
-    el.resultCard.scrollIntoView({ behavior: "smooth", block: "start" });
-  }
-
-  function renderReward(ci) {
-    const box = el.rewardBox;
-    box.hidden = false;
-    if (ci.already) {
-      box.innerHTML = "今日の出席は記録済みです。何度でも練習できます。";
-      return;
-    }
-    const lines = [`🔥 出席 ${state.streak}日目！ <strong>+${ci.gained}pt</strong>`];
-    if (ci.bonus) lines.push(`🎉 ${STREAK_BONUS_EVERY}日連続ボーナス +${STREAK_BONUS}pt`);
-    if (ci.usedRest) lines.push("💤 昨日の分は休息券で連続記録を守りました");
-    box.innerHTML = lines.join("<br>");
-    toast(`+${ci.gained}pt 獲得`);
   }
 
   // ===== 出席画面 =====
@@ -701,7 +485,6 @@
   el.btnSkipDay.addEventListener("click", () => {
     state.dayOffset += 1;
     save();
-    resetRecording();
     renderStreak();
     toast(`デモ上の日付を ${today()} にしました`);
   });
@@ -710,7 +493,6 @@
     if (!confirm("デモのデータをすべてリセットしますか？")) return;
     state = defaultState();
     save();
-    resetRecording();
     renderSentence();
     renderStreak();
     syncRatio();
@@ -1084,7 +866,7 @@
     if (talkRec) { stopTalkRec(); return; }
     if (!canRecord) {
       // 録音できない端末でも、キーボードの音声入力（🎤）なら文字で返事できる
-      el.micStatus.textContent = `${noRecordReason()}。今はキーボードの🎤（音声入力）で返事できます`;
+      el.micStatus.textContent = `${noRecordReason()}\n今はキーボードの🎤（音声入力）で、文字で返事することもできます。`;
       el.talkInput.focus();
       return;
     }
@@ -1272,7 +1054,7 @@
         if (th.lesson != null) {
           add("🐢 単語カード", () => openPractice(th.lesson, "words", "review"), true);
           add("🔤 単語クイズ", () => openPractice(th.lesson, "quiz", "review"));
-          add("🎙️ 発音チェック", () => openPractice(th.lesson, "sentence", "review"));
+          add("📖 例文", () => openPractice(th.lesson, "sentence", "review"));
         } else {
           const det = document.createElement("details");
           det.className = "expr-box mini";
@@ -1293,7 +1075,7 @@
     });
   }
 
-  // ===== テーマごとの練習（単語カード・単語クイズ・発音チェック） =====
+  // ===== テーマごとの練習（単語カード・単語クイズ・今日の例文） =====
   const QUIZ_POINTS_PER_CORRECT = 2;
   let quiz = null;          // { items: [{ko, ja, kana, inSentence, review, options[]}], i, answers: [bool], main }
   let wordIdx = 0;
@@ -1337,7 +1119,6 @@
     revealed = new Set();
     renderSentence();
     setExpl(false);
-    resetRecording();
     if (step === "words") startWords();
     else if (step === "quiz") startQuiz();
     else showStep("sentence");
