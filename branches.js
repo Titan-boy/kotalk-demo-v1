@@ -18,7 +18,8 @@
 // 音声: audio/talk/b/{テーマ}-{ターン}-{id}.mp3、fallback は {テーマ}-{ターン}-fallback.mp3、
 //       unclear は {テーマ}-unclear.mp3（ElevenLabs で生成。audio が false の間は文字だけ表示）
 window.BRANCHES = {
-  audio: false,
+  // 音声は ElevenLabs（eleven_v4。女性役 Soo、ジフン・ミンホ・キム課長は Dongjae）で生成済み：audio/talk/b/
+  audio: true,
   themes: {
     // ===== 自己紹介（민지・友達・해요体） =====
     intro: {
