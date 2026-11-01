@@ -26,6 +26,7 @@ export const SYSTEM_PROMPT = `あなたは日本人の韓国語学習者（主�
 - "ng": 返事になっていない（相手の質問と無関係、相手のセリフを写しただけ、韓国語でない、意味が取れない）。
 
 迷ったら、学習者の意欲を大切にして甘めに判定する。ただし質問に答えていない返事は "ok" にしない。
+この会話は決まったシナリオで、相手の次のセリフは「この会話でやること」を前提にしている。返事がその前提から外れている場合（例：明洞駅への行き方を聞く場面で、薬局の場所を聞く）は、韓国語が正しくても "almost" にし、feedback_ja で「この練習では〜します」と前提を伝える。corrected_ko と better_ko は前提に合う文にする。
 
 出力のルール:
 - feedback_ja: 日本語で1〜2文。学習者は日本人なので、説明はすべて日本語で書く。良かった点を短く認め、直すべき点があれば1つだけ具体的に伝える。韓国語の語句は「」で示してよい。
@@ -49,6 +50,7 @@ export function sanitize(body) {
     partner: str(body.partner, MAX.short),
     level: str(body.level, 20),
     voice: body.voice === true,
+    mission: str(body.mission, MAX.short),
     history: history.map(h => ({ who: h && h.who === "me" ? "me" : "partner", ko: str(h && h.ko, MAX.short) })),
     turn: {
       ko: str(turn.ko, MAX.short),
@@ -56,7 +58,8 @@ export function sanitize(body) {
       hint_ko: str(turn.hint_ko, MAX.short),
       hint_ja: str(turn.hint_ja, MAX.short),
       require: turn.require === true,
-      keywords: Array.isArray(turn.keywords) ? turn.keywords.slice(0, 20).map(k => str(k, 40)) : []
+      keywords: Array.isArray(turn.keywords) ? turn.keywords.slice(0, 20).map(k => str(k, 40)) : [],
+      require_note: str(turn.require_note, MAX.short)
     },
     reply
   };
@@ -68,6 +71,7 @@ export function buildUserMessage(x) {
     `テーマ: ${x.theme}（${x.level}）`,
     `相手: ${x.partner}`
   ];
+  if (x.mission) lines.push(`この会話でやること（相手のセリフはこれを前提に進む）: ${x.mission}`);
   if (x.history.length) {
     lines.push("これまでの会話:");
     x.history.forEach(h => lines.push(`  ${h.who === "me" ? "学習者" : "相手"}: ${h.ko}`));
@@ -78,6 +82,7 @@ export function buildUserMessage(x) {
   );
   if (x.turn.require) {
     lines.push(`必須の表現: この場面では次のどれかを使ってほしい → ${x.turn.keywords.join(" / ")}`);
+    if (x.turn.require_note) lines.push(`この場面の前提: ${x.turn.require_note}`);
   }
   if (x.voice) lines.push("※ 学習者の返事は音声認識の結果なので、聞き取りの誤変換を含むことがある。");
   lines.push("", "<learner_reply>", x.reply, "</learner_reply>");

@@ -463,3 +463,7 @@ body:not(.focus) .composer { display: none; }
 .check-row.strong { color: var(--text); font-weight: 700; }
 .check-row input { flex: none; }
 .form-error { color: var(--accent); font-size: 13px; font-weight: 700; min-height: 1em; margin: 4px 0; }
+
+/* 会話の最初に出す「この会話でやること」 */
+.bubble.system.mission { background: #eef3fb; border-color: #d3dff2; }
+.bubble.system.mission .b-ja { color: var(--text); font-size: 14px; }
